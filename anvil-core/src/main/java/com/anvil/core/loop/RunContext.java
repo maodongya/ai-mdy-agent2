@@ -151,7 +151,9 @@ public final class RunContext {
         }
         consecutiveWriteToolFailures++;
         if (consecutiveWriteToolFailures >= MAX_CONSECUTIVE_WRITE_FAILURES) {
-            abortRun(ErrorCodes.TOOL_FAILED, "same write tool failed " + consecutiveWriteToolFailures + " times in a row");
+            abortRun(
+                    ErrorCodes.TOOL_FAILED,
+                    "write tool failed " + consecutiveWriteToolFailures + " times in a row");
         }
     }
 

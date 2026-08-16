@@ -2,6 +2,8 @@ package com.anvil.ui;
 
 import com.anvil.protocol.ApprovalDecision;
 import com.anvil.protocol.Event;
+import com.anvil.sandbox.PathEscapeException;
+import com.anvil.sandbox.PathGuard;
 import com.anvil.ui.client.AnvilClient;
 import javafx.animation.PauseTransition;
 import javafx.application.Platform;
@@ -1390,7 +1392,7 @@ public final class WorkbenchView {
         }
         submitBg(() -> {
             try {
-                Path file = Path.of(workspace).resolve(event.path()).normalize();
+                Path file = PathGuard.assertInsideWorkspace(Path.of(workspace), event.path());
                 Files.writeString(file, content);
                 ui(() -> {
                     appendConsole(
@@ -1403,6 +1405,8 @@ public final class WorkbenchView {
                         loadFileAsync(event.path(), true);
                     }
                 });
+            } catch (PathEscapeException e) {
+                ui(() -> appendConsole(ConsoleLine.Kind.ERROR, "hunk apply denied: " + e.getMessage()));
             } catch (Exception e) {
                 ui(() -> appendConsole(ConsoleLine.Kind.ERROR, "hunk apply failed: " + e.getMessage()));
             }
@@ -1613,7 +1617,7 @@ public final class WorkbenchView {
     }
 
     private void dismissApprovalDialog(boolean drainQueued) {
-        pendingApprovals.clear();
+        denyQueuedApprovals();
         Alert alert = currentApprovalAlert;
         currentApprovalAlert = null;
         approvalDialogShowing = false;
@@ -1626,6 +1630,31 @@ public final class WorkbenchView {
         }
         if (drainQueued) {
             scheduleDrainApprovalQueue();
+        }
+    }
+
+    /** Respond DENY for approvals still in queue (cancel/shutdown before dialog opened). */
+    private void denyQueuedApprovals() {
+        List<Map<String, Object>> queued = new ArrayList<>();
+        Map<String, Object> payload;
+        while ((payload = pendingApprovals.poll()) != null) {
+            queued.add(payload);
+        }
+        if (queued.isEmpty() || client == null) {
+            return;
+        }
+        for (Map<String, Object> item : queued) {
+            String id = str(item.get("approval_id"), "");
+            if (id.isBlank()) {
+                continue;
+            }
+            submitBg(() -> {
+                try {
+                    client.respondApproval(id, ApprovalDecision.DENY.wireValue());
+                } catch (Exception ignored) {
+                    // Run may already be cancelled or approval expired.
+                }
+            });
         }
     }
 

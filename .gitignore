@@ -7,5 +7,6 @@ target/
 .DS_Store
 *.log
 .env.local
+**/.anvil/workspace-index.json
 config/application-local.yml
 anvil-app-server/src/main/resources/application-local.yml

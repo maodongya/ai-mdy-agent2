@@ -78,7 +78,7 @@ final class DiagnosticsPass {
     }
 
     private static boolean isJavaSource(String path) {
-        return path.endsWith(".java") || path.contains(".java");
+        return path != null && path.endsWith(".java");
     }
 
     private static void injectDiagnosticsHistory(
