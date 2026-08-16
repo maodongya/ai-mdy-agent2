@@ -1,0 +1,17 @@
+{
+  "id": "grep-hello",
+  "name": "Grep workspace",
+  "description": "Uses grep tool instead of shell to find Hello.",
+  "workspace": "fixtures/repos/sample-lib",
+  "model": "fixtures/models/grep-hello.jsonl",
+  "mode": "agent",
+  "user_message": "grep for Hello in workspace",
+  "max_steps": 10,
+  "expect": {
+    "status": "succeeded",
+    "max_tool_calls": 1,
+    "max_step_events": 2,
+    "event_types_contains": ["tool.planned", "tool.completed", "run.completed"],
+    "forbid_event_types": ["run.failed"]
+  }
+}

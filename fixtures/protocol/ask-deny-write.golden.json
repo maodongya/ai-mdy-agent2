@@ -1,0 +1,15 @@
+{
+  "name": "ask-deny-write",
+  "description": "Ask mode denies write then completes with message",
+  "event_types": [
+    "run.started",
+    "step.started",
+    "model.completed",
+    "tool.planned",
+    "tool.failed",
+    "step.started",
+    "model.completed",
+    "message.completed",
+    "run.completed"
+  ]
+}

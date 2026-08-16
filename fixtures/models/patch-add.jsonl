@@ -1,0 +1,2 @@
+{"type":"tool_call","id":"tc_patch","name":"search_replace","arguments":{"path":"src/main/java/com/example/Add.java","old_string":"return a - b;","new_string":"return a + b;"}}
+{"type":"message","text":"Fixed add method."}

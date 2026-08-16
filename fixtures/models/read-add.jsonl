@@ -1,0 +1,2 @@
+{"type":"tool_call","id":"tc_read","name":"fs.read","arguments":{"path":"src/main/java/com/example/Add.java"}}
+{"type":"message","text":"Read Add.java successfully."}

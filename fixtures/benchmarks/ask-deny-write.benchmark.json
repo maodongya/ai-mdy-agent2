@@ -1,0 +1,15 @@
+{
+  "id": "ask-deny-write",
+  "name": "Ask mode denies write",
+  "description": "ASK mode must deny fs.write without approval success.",
+  "workspace": "fixtures/repos/sample-lib",
+  "model": "fixtures/models/ask-deny-write.jsonl",
+  "mode": "ask",
+  "user_message": "try write",
+  "max_steps": 10,
+  "expect": {
+    "status": "succeeded",
+    "event_types_contains": ["tool.failed", "run.completed"],
+    "forbid_event_types": ["run.failed"]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "agent-write-approve",
+  "name": "Write with approval",
+  "description": "Agent write requires approval then succeeds.",
+  "workspace": "temp",
+  "model": "fixtures/models/agent-write-approve.jsonl",
+  "mode": "agent",
+  "user_message": "write approved.txt",
+  "max_steps": 12,
+  "expect": {
+    "status": "succeeded",
+    "max_tool_calls": 1,
+    "event_types_contains": ["approval.required", "approval.resolved", "edit.summary", "run.completed"],
+    "file_equals": {
+      "approved.txt": "hello"
+    },
+    "file_exists": ["approved.txt"]
+  }
+}

@@ -1,0 +1,2 @@
+{"type":"tool_call","id":"tc_write","name":"fs.write","arguments":{"path":"AnvilDemo.txt","content":"// written by Anvil Workbench\n"}}
+{"type":"message","text":"Wrote AnvilDemo.txt"}

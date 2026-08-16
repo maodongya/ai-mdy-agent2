@@ -1,0 +1,20 @@
+{
+  "name": "agent-write-approve",
+  "description": "Agent write requires approval",
+  "event_types": [
+    "run.started",
+    "step.started",
+    "model.completed",
+    "tool.planned",
+    "approval.required",
+    "approval.resolved",
+    "tool.started",
+    "tool.completed",
+    "edit.summary",
+    "edit.preview",
+    "step.started",
+    "model.completed",
+    "message.completed",
+    "run.completed"
+  ]
+}

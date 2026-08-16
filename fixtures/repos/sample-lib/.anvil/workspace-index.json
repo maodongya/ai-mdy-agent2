@@ -1,0 +1,77 @@
+{
+  "version" : 2,
+  "builtAtMillis" : 1786887646586,
+  "paths" : [ "Hello.class", "Hello.java", "src/main/java/com/example/Add.java" ],
+  "symbols" : [ {
+    "path" : "Hello.java",
+    "line" : 1,
+    "kind" : "class",
+    "name" : "Hello",
+    "superName" : null,
+    "interfaces" : [ ]
+  }, {
+    "path" : "Hello.java",
+    "line" : 2,
+    "kind" : "method",
+    "name" : "main",
+    "superName" : null,
+    "interfaces" : [ ]
+  }, {
+    "path" : "src/main/java/com/example/Add.java",
+    "line" : 3,
+    "kind" : "class",
+    "name" : "Add",
+    "superName" : null,
+    "interfaces" : [ ]
+  }, {
+    "path" : "src/main/java/com/example/Add.java",
+    "line" : 4,
+    "kind" : "constructor",
+    "name" : "Add",
+    "superName" : null,
+    "interfaces" : [ ]
+  }, {
+    "path" : "src/main/java/com/example/Add.java",
+    "line" : 6,
+    "kind" : "method",
+    "name" : "add",
+    "superName" : null,
+    "interfaces" : [ ]
+  } ],
+  "chunks" : [ {
+    "path" : "Hello.java",
+    "startLine" : 1,
+    "endLine" : 5,
+    "symbolName" : "Hello",
+    "kind" : "class",
+    "text" : "public class Hello {\n    public static void main(String[] args) {\n        System.out.println(\"Hello, World!\");\n    }\n}"
+  }, {
+    "path" : "Hello.java",
+    "startLine" : 2,
+    "endLine" : 4,
+    "symbolName" : "main",
+    "kind" : "method",
+    "text" : "public static void main(String[] args) {\n        System.out.println(\"Hello, World!\");\n    }"
+  }, {
+    "path" : "src/main/java/com/example/Add.java",
+    "startLine" : 3,
+    "endLine" : 9,
+    "symbolName" : "Add",
+    "kind" : "class",
+    "text" : "public final class Add {\n    private Add() {}\n\n    public static int add(int a, int b) {\n        return a + b;\n    }\n}"
+  }, {
+    "path" : "src/main/java/com/example/Add.java",
+    "startLine" : 4,
+    "endLine" : 4,
+    "symbolName" : "Add.<init>",
+    "kind" : "constructor",
+    "text" : "private Add() {}"
+  }, {
+    "path" : "src/main/java/com/example/Add.java",
+    "startLine" : 6,
+    "endLine" : 8,
+    "symbolName" : "add",
+    "kind" : "method",
+    "text" : "public static int add(int a, int b) {\n        return a + b;\n    }"
+  } ]
+}

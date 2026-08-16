@@ -1,0 +1,44 @@
+server:
+  port: 7788
+
+anvil:
+  protocol-version: "1.0"
+  max-steps-default: 40
+  compact-threshold-tokens: 120000
+  context-target-tokens: 80000
+  context-keep-recent: 24
+  tool-content-max-chars: 16000
+  approval-timeout-ms: 1800000
+  sandbox:
+    tier: workspace_write
+    shell-timeout-ms: 30000
+  policy:
+    auto-approve-patch-tools: true
+  verify:
+    auto-after-write: false
+    command-template: "mvn -q test -pl {module} -am"
+    timeout-ms: 90000
+    inject-failures: true
+  index:
+    auto-warm: true
+  loop:
+    parallel-read-tools: true
+  terminal:
+    enabled: true
+    max-sessions-per-thread: 3
+    max-output-lines: 2000
+    job-timeout-ms: 300000
+  memory:
+    db-path: "${user.home}/.anvil/memory.db"
+  model:
+    provider: scripted
+    model-id: scripted:read-add
+    base-url: https://api.openai.com/v1
+    api-key-env: OPENAI_API_KEY
+  deepseek:
+    base-url: https://api.deepseek.com/v1
+    api-key-env: DEEPSEEK_API_KEY
+    model-id: deepseek-chat
+  mcp:
+    allowlist: []
+    rpc-timeout-ms: 30000

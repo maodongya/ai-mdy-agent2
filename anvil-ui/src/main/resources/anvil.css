@@ -1,0 +1,623 @@
+/*
+ * Anvil Workbench — structural styles (theme-agnostic).
+ * Colors come from -app-* variables defined in /themes/*.css (loaded after this file).
+ */
+
+.root {
+    -fx-font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    -fx-font-size: 13px;
+    -fx-background-color: -app-bg;
+    /* Fallback palette if theme sheet missing */
+    -app-bg: #0d1117;
+    -app-panel: #0f1117;
+    -app-surface: #131826;
+    -app-edge: #2a3142;
+    -app-line-num: #4a5266;
+    -app-text: #e6ebf2;
+    -app-muted: #7a8498;
+    -app-dim: #9aa4b8;
+    -app-accent: #3d9cf0;
+    -app-gutter: #0f1117;
+    -app-gutter-line: #4a5266;
+    -app-row-even: #0f1117;
+    -app-row-odd: #121722;
+    -app-header-bg: #161b26;
+    -app-tab-bg: #131826;
+    -app-hover: #1a2233;
+    -app-added-bg: #1a3d2e;
+    -app-added-fg: #a8e6c5;
+    -app-removed-bg: #3d1f1f;
+    -app-removed-fg: #f0a8a8;
+    -app-primary: #2563eb;
+    -app-primary-fg: #ffffff;
+    -app-danger: #7f1d1d;
+    -app-danger-fg: #fecaca;
+    -app-success: #3fb950;
+    -app-warn: #d29922;
+    -app-error: #f85149;
+    -fx-base: -app-bg;
+    -fx-background: -app-bg;
+    -fx-control-inner-background: -app-panel;
+    -fx-text-background-color: -app-text;
+    -fx-accent: -app-accent;
+    -fx-focus-color: -app-accent;
+    -fx-faint-focus-color: transparent;
+}
+
+/* ── Layout shells ── */
+.panel {
+    -fx-background-color: -app-panel;
+    -fx-border-color: -app-edge;
+    -fx-border-width: 0 1 0 0;
+}
+
+.toolbar {
+    -fx-background-color: -app-surface;
+    -fx-border-color: -app-edge;
+    -fx-border-width: 0 0 1 0;
+}
+
+.status-bar {
+    -fx-background-color: -app-surface;
+    -fx-border-color: -app-edge;
+    -fx-border-width: 1 0 0 0;
+    -fx-padding: 4 10 4 10;
+}
+
+.prompt-row {
+    -fx-background-color: -app-panel;
+    -fx-padding: 6 0 0 0;
+}
+
+.split-pane > .split-pane-divider {
+    -fx-background-color: -app-edge;
+    -fx-padding: 0 1;
+}
+
+/* ── Typography ── */
+.logo {
+    -fx-text-fill: -app-accent;
+    -fx-font-weight: bold;
+}
+
+.section-label {
+    -fx-text-fill: -app-dim;
+    -fx-font-size: 11px;
+    -fx-font-weight: bold;
+}
+
+.field-caption {
+    -fx-text-fill: -app-muted;
+    -fx-font-size: 11px;
+}
+
+.editor-path {
+    -fx-text-fill: -app-dim;
+    -fx-font-family: monospace;
+    -fx-font-size: 12px;
+}
+
+.empty-hint {
+    -fx-text-fill: -app-muted;
+    -fx-font-size: 12px;
+    -fx-alignment: center;
+}
+
+.prompt-glyph {
+    -fx-text-fill: -app-accent;
+    -fx-font-weight: bold;
+}
+
+.status-meta {
+    -fx-text-fill: -app-muted;
+    -fx-font-family: monospace;
+    -fx-font-size: 11px;
+}
+
+.run-status-label {
+    -fx-text-fill: -app-accent;
+    -fx-font-size: 11px;
+}
+
+/* ── Health badge ── */
+.health-badge {
+    -fx-font-size: 11px;
+    -fx-font-family: monospace;
+}
+.health-badge.ok { -fx-text-fill: -app-success; }
+.health-badge.warn { -fx-text-fill: -app-warn; }
+.health-badge.err { -fx-text-fill: -app-error; }
+
+/* ── Controls (global) ── */
+.text-field, .text-area, .combo-box, .combo-box-base {
+    -fx-background-color: -app-panel;
+    -fx-text-fill: -app-text;
+    -fx-prompt-text-fill: -app-muted;
+    -fx-border-color: -app-edge;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+}
+
+.text-field:focused, .combo-box:focused {
+    -fx-border-color: -app-accent;
+}
+
+.combo-box .list-cell {
+    -fx-background-color: -app-panel;
+    -fx-text-fill: -app-text;
+}
+
+.combo-box-popup .list-view {
+    -fx-background-color: -app-panel;
+    -fx-border-color: -app-edge;
+}
+
+.combo-box-popup .list-cell {
+    -fx-background-color: -app-panel;
+    -fx-text-fill: -app-text;
+}
+
+.combo-box-popup .list-cell:hover {
+    -fx-background-color: -app-hover;
+}
+
+.model-combo {
+    -fx-font-family: monospace;
+    -fx-font-size: 11px;
+}
+
+.button {
+    -fx-background-color: -app-surface;
+    -fx-text-fill: -app-text;
+    -fx-border-color: -app-edge;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 4 10 4 10;
+}
+
+.button:hover {
+    -fx-background-color: -app-hover;
+}
+
+.icon-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: -app-dim;
+    -fx-padding: 2 6 2 6;
+}
+
+.icon-btn:hover {
+    -fx-background-color: -app-hover;
+    -fx-text-fill: -app-text;
+}
+
+.accent-btn {
+    -fx-background-color: transparent;
+    -fx-border-color: -app-accent;
+    -fx-text-fill: -app-accent;
+}
+
+.accent-btn:hover {
+    -fx-background-color: -app-hover;
+}
+
+.primary, .primary-btn {
+    -fx-background-color: -app-primary;
+    -fx-text-fill: -app-primary-fg;
+    -fx-border-color: transparent;
+    -fx-font-weight: bold;
+}
+
+.primary:hover, .primary-btn:hover {
+    -fx-background-color: derive(-app-primary, 10%);
+}
+
+.danger-btn {
+    -fx-background-color: -app-danger;
+    -fx-text-fill: -app-danger-fg;
+    -fx-border-color: transparent;
+}
+
+.danger-btn:hover {
+    -fx-background-color: derive(-app-danger, 10%);
+}
+
+.check-box {
+    -fx-text-fill: -app-dim;
+    -fx-font-size: 11px;
+}
+
+.separator .line {
+    -fx-border-color: -app-edge;
+}
+
+/* ── Menu bar ── */
+.menu-bar {
+    -fx-background-color: -app-surface;
+    -fx-border-color: -app-edge;
+    -fx-border-width: 0 0 1 0;
+}
+
+.menu-bar .label {
+    -fx-text-fill: -app-text;
+}
+
+.menu-item .label {
+    -fx-text-fill: -app-text;
+}
+
+.context-menu {
+    -fx-background-color: -app-panel;
+    -fx-border-color: -app-edge;
+}
+
+/* ── File tree ── */
+.file-tree {
+    -fx-background-color: -app-panel;
+    -fx-border-color: transparent;
+}
+
+.file-tree .tree-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -app-text;
+    -fx-font-size: 12px;
+}
+
+.file-tree .tree-cell:hover {
+    -fx-background-color: -app-hover;
+}
+
+.file-tree .tree-cell:selected {
+    -fx-background-color: -app-accent;
+    -fx-text-fill: -app-bg;
+}
+
+.tree-dir {
+    -fx-font-weight: bold;
+}
+
+.tree-file {
+    -fx-text-fill: -app-dim;
+}
+
+/* ── Tabs (editor + agent) ── */
+.editor-tabs, .agent-tabs {
+    -fx-tab-min-height: 28;
+    -fx-background-color: -app-panel;
+}
+
+.editor-tabs .tab-content-area,
+.agent-tabs .tab-content-area {
+    -fx-padding: 0;
+    -fx-background-color: -app-panel;
+}
+
+.editor-tabs:focused .tab-content-area,
+.agent-tabs:focused .tab-content-area {
+    -fx-background-color: -app-panel;
+}
+
+.editor-tabs .tab-header-area .tab-header-background,
+.agent-tabs .tab-header-area .tab-header-background {
+    -fx-background-color: -app-panel;
+}
+
+.editor-tabs .tab, .agent-tabs .tab {
+    -fx-background-color: -app-tab-bg;
+    -fx-background-radius: 4 4 0 0;
+}
+
+.editor-tabs .tab:selected, .agent-tabs .tab:selected {
+    -fx-background-color: -app-panel;
+}
+
+.editor-tabs .tab .tab-label,
+.agent-tabs .tab .tab-label {
+    -fx-text-fill: -app-dim;
+}
+
+.editor-tabs .tab:selected .tab-label,
+.agent-tabs .tab:selected .tab-label {
+    -fx-text-fill: -app-accent;
+    -fx-font-weight: bold;
+}
+
+.center-tab { -fx-background-color: transparent; }
+.center-tab .tab-label { -fx-font-size: 12px; -fx-text-fill: -app-dim; }
+.center-tab:selected .tab-label { -fx-text-fill: -app-accent; -fx-font-weight: bold; }
+
+/* ── Code editor ── */
+.text-area {
+    -fx-control-inner-background: -app-panel;
+    -fx-text-fill: -app-text;
+    -fx-highlight-fill: -app-accent;
+    -fx-highlight-text-fill: -app-bg;
+    -fx-background-radius: 4;
+}
+
+.code-gutter-host {
+    -fx-background-color: -app-gutter;
+    -fx-padding: 8 4 8 6;
+    -fx-min-width: 40;
+    -fx-pref-width: 40;
+    -fx-max-width: 48;
+}
+
+.code-gutter {
+    -fx-background-color: transparent;
+    -fx-spacing: 0;
+}
+
+.code-gutter .gutter-line {
+    -fx-text-fill: -app-gutter-line;
+    -fx-font-family: monospace;
+    -fx-padding: 0 2 0 0;
+}
+
+.code-editor {
+    -fx-background-color: -app-panel;
+}
+
+.code-editor .text-area {
+    -fx-padding: 8;
+}
+
+/* ── Find bar ── */
+.find-bar {
+    -fx-background-color: -app-panel;
+    -fx-border-color: -app-edge;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+    -fx-padding: 4 6;
+}
+
+.find-status {
+    -fx-text-fill: -app-dim;
+    -fx-font-size: 11px;
+}
+
+/* ── Console ── */
+.console-list {
+    -fx-background-color: -app-panel;
+    -fx-border-color: transparent;
+}
+
+.console-list .list-cell {
+    -fx-background-color: transparent;
+    -fx-text-fill: -app-text;
+    -fx-font-family: monospace;
+    -fx-font-size: 12px;
+    -fx-padding: 1 4;
+}
+
+.console-list .list-cell:odd {
+    -fx-background-color: -app-row-odd;
+}
+
+.console-streaming {
+    -fx-control-inner-background: -app-panel;
+    -fx-text-fill: -app-text;
+    -fx-font-family: monospace;
+    -fx-font-size: 12px;
+}
+
+.console-user { -fx-text-fill: -app-accent; }
+.console-message { -fx-text-fill: -app-text; }
+.console-tool { -fx-text-fill: #79c0ff; }
+.console-approval { -fx-text-fill: -app-warn; }
+.console-error { -fx-text-fill: -app-error; }
+.console-system { -fx-text-fill: -app-muted; }
+.console-context { -fx-text-fill: -app-dim; }
+.console-metrics { -fx-text-fill: -app-success; }
+
+/* ── Terminal ── */
+.terminal-panel {
+    -fx-background-color: -app-panel;
+}
+
+.terminal-input {
+    -fx-font-family: monospace;
+    -fx-font-size: 12px;
+}
+
+.terminal-footer {
+    -fx-padding: 2 0 0 0;
+}
+
+.terminal-status {
+    -fx-text-fill: -app-accent;
+    -fx-font-size: 11px;
+    -fx-font-family: monospace;
+}
+
+.terminal-meta {
+    -fx-text-fill: -app-muted;
+    -fx-font-size: 11px;
+    -fx-font-family: monospace;
+}
+
+/* ── Trace table ── */
+.run-trace-table {
+    -fx-background-color: -app-panel;
+    -fx-border-color: transparent;
+}
+
+.run-trace-table .column-header {
+    -fx-background-color: -app-header-bg;
+    -fx-border-color: -app-edge;
+}
+
+.run-trace-table .column-header .label {
+    -fx-text-fill: -app-dim;
+    -fx-font-size: 11px;
+}
+
+.run-trace-table .table-row-cell {
+    -fx-background-color: -app-row-even;
+    -fx-cell-size: 24;
+}
+
+.run-trace-table .table-row-cell:odd {
+    -fx-background-color: -app-row-odd;
+}
+
+.run-trace-table .table-cell {
+    -fx-text-fill: -app-text;
+    -fx-font-family: monospace;
+    -fx-font-size: 11px;
+}
+
+.run-trace-table .table-row-cell:selected {
+    -fx-background-color: -app-hover;
+}
+
+/* ── Review Diff ── */
+.diff-review-panel {
+    -fx-background-color: -app-panel;
+    -fx-min-height: 180;
+}
+
+.diff-review-path {
+    -fx-text-fill: -app-dim;
+    -fx-font-size: 12px;
+}
+
+.diff-review-header {
+    -fx-text-fill: -app-text;
+    -fx-font-weight: bold;
+    -fx-font-size: 12px;
+}
+
+.diff-review-stats {
+    -fx-text-fill: -app-muted;
+    -fx-font-size: 11px;
+}
+
+.diff-review-table {
+    -fx-background-color: -app-panel;
+    -fx-border-color: -app-edge;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+}
+
+.diff-review-table .column-header {
+    -fx-background-color: -app-header-bg;
+    -fx-border-color: -app-edge;
+}
+
+.diff-review-table .column-header .label {
+    -fx-text-fill: -app-dim;
+    -fx-font-size: 11px;
+}
+
+.diff-review-table .table-row-cell {
+    -fx-background-color: -app-row-even;
+    -fx-border-color: transparent;
+    -fx-cell-size: 22;
+}
+
+.diff-review-table .table-row-cell:odd {
+    -fx-background-color: -app-row-odd;
+}
+
+.diff-review-table .table-cell {
+    -fx-text-fill: -app-text;
+    -fx-font-family: monospace;
+    -fx-font-size: 11px;
+    -fx-padding: 0 4;
+}
+
+.diff-col-line { -fx-alignment: CENTER-RIGHT; -fx-text-fill: -app-line-num; }
+.diff-col-marker { -fx-alignment: CENTER; -fx-text-fill: -app-muted; }
+.diff-col-before, .diff-col-after { -fx-alignment: CENTER-LEFT; }
+
+.diff-row-added { -fx-background-color: -app-added-bg; }
+.diff-row-added .table-cell { -fx-text-fill: -app-added-fg; }
+.diff-row-removed { -fx-background-color: -app-removed-bg; }
+.diff-row-removed .table-cell { -fx-text-fill: -app-removed-fg; }
+
+.diff-code-scroll {
+    -fx-background-color: -app-panel;
+    -fx-border-color: -app-edge;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+}
+
+.diff-code-scroll > .viewport {
+    -fx-background-color: -app-panel;
+}
+
+.diff-code-lines {
+    -fx-spacing: 0;
+    -fx-padding: 2 0;
+}
+
+.diff-code-row {
+    -fx-padding: 0 6;
+}
+
+.diff-gutter-num {
+    -fx-text-fill: -app-line-num;
+    -fx-font-family: monospace;
+    -fx-font-size: 12px;
+    -fx-alignment: CENTER-RIGHT;
+}
+
+.diff-gutter-mark {
+    -fx-text-fill: -app-muted;
+    -fx-font-family: monospace;
+    -fx-font-size: 12px;
+    -fx-alignment: CENTER;
+}
+
+.diff-line-text {
+    -fx-font-family: monospace;
+    -fx-font-size: 12px;
+    -fx-fill: -app-text;
+}
+
+.diff-row-added.diff-code-row {
+    -fx-background-color: -app-added-bg;
+}
+
+.diff-row-added .diff-line-text {
+    -fx-fill: -app-added-fg;
+}
+
+.diff-row-removed.diff-code-row {
+    -fx-background-color: -app-removed-bg;
+}
+
+.diff-row-removed .diff-line-text {
+    -fx-fill: -app-removed-fg;
+}
+
+.diff-empty-hint {
+    -fx-text-fill: -app-muted;
+    -fx-font-size: 12px;
+    -fx-padding: 8 12;
+}
+
+/* ── Diff file queue ── */
+.diff-file-list {
+    -fx-background-color: -app-panel;
+    -fx-border-color: -app-edge;
+    -fx-border-radius: 4;
+    -fx-background-radius: 4;
+}
+
+.diff-file-list .list-cell {
+    -fx-text-fill: -app-text;
+    -fx-font-family: monospace;
+    -fx-font-size: 11px;
+    -fx-padding: 4 8;
+}
+
+.diff-file-list .list-cell:selected {
+    -fx-background-color: -app-hover;
+    -fx-text-fill: -app-accent;
+}
+
+.diff-file-list .list-cell:empty {
+    -fx-background-color: transparent;
+}

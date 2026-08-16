@@ -1,0 +1,11 @@
+target/
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+.DS_Store
+*.log
+.env.local
+config/application-local.yml
+anvil-app-server/src/main/resources/application-local.yml

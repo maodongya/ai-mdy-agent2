@@ -1,0 +1,16 @@
+{
+  "name": "read-add",
+  "description": "Agent scripted run: read Add.java then message",
+  "event_types": [
+    "run.started",
+    "step.started",
+    "model.completed",
+    "tool.planned",
+    "tool.started",
+    "tool.completed",
+    "step.started",
+    "model.completed",
+    "message.completed",
+    "run.completed"
+  ]
+}

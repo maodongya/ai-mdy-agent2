@@ -1,0 +1,25 @@
+# Copy to anvil-app-server/src/main/resources/application-local.yml
+
+server:
+  port: 7788
+
+anvil:
+  protocol-version: "1.0"
+  max-steps-default: 40
+  compact-threshold-tokens: 120000
+  approval-timeout-ms: 1800000
+  sandbox:
+    tier: workspace_write
+    shell-timeout-ms: 30000
+  model:
+    provider: scripted
+    model-id: scripted:read-add
+    base-url: https://api.openai.com/v1
+    api-key-env: OPENAI_API_KEY
+  deepseek:
+    base-url: https://api.deepseek.com/v1
+    api-key-env: DEEPSEEK_API_KEY
+    model-id: deepseek-chat
+  mcp:
+    allowlist: []
+    rpc-timeout-ms: 30000

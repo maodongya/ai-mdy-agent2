@@ -1,0 +1,3 @@
+{"type":"tool_call","id":"tc_sym","name":"symbols.search","arguments":{"query":"Add","top_k":5}}
+{"type":"tool_call","id":"tc_read","name":"fs.read","arguments":{"path":"src/main/java/com/example/Add.java"}}
+{"type":"message","text":"Found and read Add."}

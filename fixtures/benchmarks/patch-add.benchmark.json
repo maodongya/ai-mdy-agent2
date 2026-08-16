@@ -1,0 +1,21 @@
+{
+  "id": "patch-add",
+  "name": "Search-replace bugfix",
+  "description": "Fix subtract bug in Add.java using search_replace.",
+  "workspace": "temp",
+  "workspace_from": "fixtures/repos/sample-lib-buggy",
+  "model": "fixtures/models/patch-add.jsonl",
+  "mode": "agent",
+  "user_message": "fix the add method bug",
+  "max_steps": 12,
+  "expect": {
+    "status": "succeeded",
+    "max_tool_calls": 1,
+    "max_step_events": 2,
+    "event_types_contains": ["edit.summary", "edit.preview", "run.completed"],
+    "file_contains": {
+      "src/main/java/com/example/Add.java": "return a + b"
+    },
+    "forbid_event_types": ["run.failed", "tool.failed"]
+  }
+}

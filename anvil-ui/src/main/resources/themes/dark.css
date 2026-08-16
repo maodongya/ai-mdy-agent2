@@ -1,0 +1,33 @@
+/* Dark theme tokens */
+.root {
+    -fx-base: #0d1117;
+    -fx-background: #0d1117;
+    -fx-control-inner-background: #0f1117;
+    -app-bg: #0d1117;
+    -app-panel: #0f1117;
+    -app-surface: #131826;
+    -app-edge: #2a3142;
+    -app-line-num: #4a5266;
+    -app-text: #e6ebf2;
+    -app-muted: #7a8498;
+    -app-dim: #9aa4b8;
+    -app-accent: #3d9cf0;
+    -app-gutter: #0f1117;
+    -app-gutter-line: #4a5266;
+    -app-row-even: #0f1117;
+    -app-row-odd: #121722;
+    -app-header-bg: #161b26;
+    -app-tab-bg: #131826;
+    -app-hover: #1a2233;
+    -app-added-bg: #1a3d2e;
+    -app-added-fg: #a8e6c5;
+    -app-removed-bg: #3d1f1f;
+    -app-removed-fg: #f0a8a8;
+    -app-primary: #2563eb;
+    -app-primary-fg: #ffffff;
+    -app-danger: #7f1d1d;
+    -app-danger-fg: #fecaca;
+    -app-success: #3fb950;
+    -app-warn: #d29922;
+    -app-error: #f85149;
+}

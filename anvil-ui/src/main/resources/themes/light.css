@@ -1,0 +1,33 @@
+/* Light theme tokens */
+.root {
+    -fx-base: #f5f6f8;
+    -fx-background: #f5f6f8;
+    -fx-control-inner-background: #ffffff;
+    -app-bg: #f5f6f8;
+    -app-panel: #ffffff;
+    -app-surface: #eef0f4;
+    -app-edge: #d0d5dd;
+    -app-line-num: #9099a8;
+    -app-text: #1c2330;
+    -app-muted: #6b7483;
+    -app-dim: #4a5266;
+    -app-accent: #1f6feb;
+    -app-gutter: #f0f2f5;
+    -app-gutter-line: #9099a8;
+    -app-row-even: #ffffff;
+    -app-row-odd: #f0f2f5;
+    -app-header-bg: #e8ebf0;
+    -app-tab-bg: #e4e7ed;
+    -app-hover: #e8ecf2;
+    -app-added-bg: #e3f6ec;
+    -app-added-fg: #157347;
+    -app-removed-bg: #fde9ea;
+    -app-removed-fg: #b31d28;
+    -app-primary: #1f6feb;
+    -app-primary-fg: #ffffff;
+    -app-danger: #c1352f;
+    -app-danger-fg: #ffffff;
+    -app-success: #157347;
+    -app-warn: #9a6700;
+    -app-error: #c1352f;
+}

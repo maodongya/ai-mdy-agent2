@@ -1,0 +1,2 @@
+{"type":"tool_call","id":"tc_plan","name":"plan.update","arguments":{"content":"# Plan\n\n1. Read code\n2. Fix bug"}}
+{"type":"message","text":"Plan updated."}

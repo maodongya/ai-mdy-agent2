@@ -1,0 +1,2 @@
+{"type":"tool_call","id":"tc_write","name":"fs.write","arguments":{"path":"approved.txt","content":"hello"}}
+{"type":"message","text":"Write approved and done."}

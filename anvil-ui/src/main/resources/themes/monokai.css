@@ -1,0 +1,33 @@
+/* Monokai theme tokens */
+.root {
+    -fx-base: #1e1f29;
+    -fx-background: #1e1f29;
+    -fx-control-inner-background: #23242f;
+    -app-bg: #1e1f29;
+    -app-panel: #23242f;
+    -app-surface: #2a2b3a;
+    -app-edge: #34364a;
+    -app-line-num: #494d60;
+    -app-text: #f8f8f2;
+    -app-muted: #8b90a6;
+    -app-dim: #b3b8c7;
+    -app-accent: #66d9ef;
+    -app-gutter: #191920;
+    -app-gutter-line: #494d60;
+    -app-row-even: #23242f;
+    -app-row-odd: #1b1c26;
+    -app-header-bg: #2a2b3a;
+    -app-tab-bg: #2a2b3a;
+    -app-hover: #323348;
+    -app-added-bg: #1f3e2b;
+    -app-added-fg: #a6e22e;
+    -app-removed-bg: #3d2530;
+    -app-removed-fg: #f92672;
+    -app-primary: #a6e22e;
+    -app-primary-fg: #1e1f29;
+    -app-danger: #f92672;
+    -app-danger-fg: #ffffff;
+    -app-success: #a6e22e;
+    -app-warn: #e6db74;
+    -app-error: #f92672;
+}

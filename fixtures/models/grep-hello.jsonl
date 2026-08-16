@@ -1,0 +1,2 @@
+{"type":"tool_call","id":"tc_grep","name":"grep","arguments":{"pattern":"Hello","path_glob":"**/*.java"}}
+{"type":"message","text":"Found Hello in workspace."}

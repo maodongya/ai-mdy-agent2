@@ -1,0 +1,2 @@
+{"type":"tool_call","id":"tc_write","name":"fs.write","arguments":{"path":"out.txt","content":"blocked"}}
+{"type":"message","text":"Could not write in ask mode."}

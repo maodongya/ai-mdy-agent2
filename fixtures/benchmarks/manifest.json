@@ -1,0 +1,10 @@
+{
+  "benchmarks": [
+    "read-add",
+    "grep-hello",
+    "symbols-find",
+    "patch-add",
+    "ask-deny-write",
+    "agent-write-approve"
+  ]
+}
