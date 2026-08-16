@@ -44,6 +44,27 @@ class RunRequestTest {
     }
 
     @Test
+    void capsOpenFilesList() {
+        List<String> many = new java.util.ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            many.add("File" + i + ".java");
+        }
+        String block = RunRequest.formatEditorContext(many, "File0.java");
+        assertTrue(block.contains("…+10 more"));
+    }
+
+    @Test
+    void onlyFocusUnsavedBuffer() {
+        String block = RunRequest.formatEditorContext(
+                List.of("A.java", "B.java"),
+                "A.java",
+                null,
+                Map.of("A.java", "aaa", "B.java", "bbb"));
+        assertTrue(block.contains("aaa"));
+        assertTrue(!block.contains("bbb"));
+    }
+
+    @Test
     void formatsHarnessContextWithModuleGraphAndAtRefs() throws Exception {
         Files.writeString(
                 workspace.resolve("pom.xml"),

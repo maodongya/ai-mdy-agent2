@@ -1,7 +1,8 @@
 package com.anvil.core.loop;
 
 import com.anvil.core.compact.ContextBudget;
-import com.anvil.core.compact.ContextCompactor;
+import com.anvil.core.compact.DiagnosticSummary;
+import com.anvil.core.compact.ToolContentBudget;
 import com.anvil.protocol.ToolResult;
 import com.anvil.tools.DiagnosticsTool;
 
@@ -90,7 +91,8 @@ final class DiagnosticsPass {
         item.put("status", "error");
         item.put(
                 "content",
-                ContextCompactor.truncateContent(result.content(), budget.maxToolContentChars())
+                ToolContentBudget.apply(
+                        DiagnosticSummary.forOutput(result.content()), "diagnostics.auto", budget.maxToolContentChars())
                         + "\n\nFix compile errors before continuing.");
         ctx.appendHistory(item);
     }

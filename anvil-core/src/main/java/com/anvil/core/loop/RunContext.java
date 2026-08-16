@@ -1,5 +1,6 @@
 package com.anvil.core.loop;
 
+import com.anvil.core.compact.ReadCache;
 import com.anvil.core.compact.RunAnchors;
 import com.anvil.protocol.ErrorCodes;
 import com.anvil.protocol.Event;
@@ -30,13 +31,18 @@ public final class RunContext {
     private final Consumer<Event> listener;
     private long totalInputTokens;
     private long totalOutputTokens;
+    private long totalCachedTokens;
     private int toolCallCount;
     private final RunAnchors anchors = new RunAnchors();
+    private final ReadCache readCache = new ReadCache();
     private volatile boolean verifyFixRequired;
     private int consecutiveWriteToolFailures;
     private int verifyFixTextOnlyRetries;
     private volatile boolean abortRun;
     private volatile RunStatus abortStatus = RunStatus.FAILED;
+    private volatile boolean justCompacted;
+    private volatile boolean omitToolsNextStep;
+    private long tokenBudgetPerRun = 500_000L;
 
     private static final int MAX_CONSECUTIVE_WRITE_FAILURES = 5;
     private static final int MAX_VERIFY_FIX_TEXT_RETRIES = 3;
@@ -69,6 +75,10 @@ public final class RunContext {
 
     public Set<String> sessionAllows() {
         return sessionAllows;
+    }
+
+    public ReadCache readCache() {
+        return readCache;
     }
 
     public void cancel() {
@@ -106,12 +116,54 @@ public final class RunContext {
         }
     }
 
+    public void markCompacted() {
+        justCompacted = true;
+    }
+
+    public boolean consumeJustCompacted() {
+        if (!justCompacted) {
+            return false;
+        }
+        justCompacted = false;
+        return true;
+    }
+
+    public void setOmitToolsNextStep(boolean omit) {
+        omitToolsNextStep = omit;
+    }
+
+    public boolean consumeOmitToolsNextStep() {
+        if (!omitToolsNextStep) {
+            return false;
+        }
+        omitToolsNextStep = false;
+        return true;
+    }
+
+    public void configureTokenBudget(long budget) {
+        if (budget > 0) {
+            tokenBudgetPerRun = budget;
+        }
+    }
+
     public void recordModelUsage(com.anvil.core.model.ModelUsage usage) {
         if (usage == null) {
             return;
         }
         totalInputTokens += usage.inputTokens();
         totalOutputTokens += usage.outputTokens();
+        if (usage.cachedTokens() != null) {
+            totalCachedTokens += usage.cachedTokens();
+        }
+        if (totalInputTokens + totalOutputTokens > tokenBudgetPerRun) {
+            abortRun(
+                    ErrorCodes.BUDGET_EXCEEDED,
+                    "run token budget exceeded ("
+                            + (totalInputTokens + totalOutputTokens)
+                            + " > "
+                            + tokenBudgetPerRun
+                            + ")");
+        }
     }
 
     public void incrementToolCalls(int count) {
@@ -123,6 +175,10 @@ public final class RunContext {
         map.put("input_tokens", totalInputTokens);
         map.put("output_tokens", totalOutputTokens);
         map.put("total_tokens", totalInputTokens + totalOutputTokens);
+        map.put("cached_tokens", totalCachedTokens);
+        if (totalInputTokens > 0) {
+            map.put("cache_hit_ratio", (double) totalCachedTokens / totalInputTokens);
+        }
         map.put("tool_calls", toolCallCount);
         return map;
     }
@@ -142,6 +198,7 @@ public final class RunContext {
     public void clearVerifyFixRequired() {
         verifyFixRequired = false;
         verifyFixTextOnlyRetries = 0;
+        setOmitToolsNextStep(true);
     }
 
     public void recordWriteToolOutcome(boolean ok) {

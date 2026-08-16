@@ -4,10 +4,10 @@ server:
 anvil:
   protocol-version: "1.0"
   max-steps-default: 40
-  compact-threshold-tokens: 120000
-  context-target-tokens: 80000
-  context-keep-recent: 24
-  tool-content-max-chars: 16000
+  compact-threshold-tokens: 40000
+  context-target-tokens: 28000
+  context-keep-recent: 10
+  tool-content-max-chars: 4000
   approval-timeout-ms: 1800000
   sandbox:
     tier: workspace_write
@@ -26,9 +26,11 @@ anvil:
   loop:
     parallel-read-tools: true
     parallel-writes: true
-    explore-sub-agent: true
+    explore-sub-agent: false
     planner-required: true
-    explore-max-steps: 6
+    explore-max-steps: 4
+    explore-max-tokens-budget: 8000
+    token-budget-per-run: 500000
   terminal:
     enabled: true
     max-sessions-per-thread: 3

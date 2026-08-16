@@ -30,6 +30,8 @@ class AnvilContextConfigTest {
                 true,
                 true,
                 6,
+                8_000,
+                500_000L,
                 true,
                 "deepseek:deepseek-chat",
                 "deepseek:deepseek-chat",

@@ -25,6 +25,8 @@ public final class AnvilContextConfig {
     private final boolean exploreSubAgent;
     private final boolean plannerRequired;
     private final int exploreMaxSteps;
+    private final int exploreMaxTokensBudget;
+    private final long tokenBudgetPerRun;
 
     public AnvilContextConfig(
             @Value("${anvil.compact-threshold-tokens:120000}") int compactThresholdTokens,
@@ -40,9 +42,11 @@ public final class AnvilContextConfig {
             @Value("${anvil.verify.force-fix-on-failure:true}") boolean verifyForceFixOnFailure,
             @Value("${anvil.loop.parallel-read-tools:true}") boolean parallelReadTools,
             @Value("${anvil.loop.parallel-writes:true}") boolean parallelWrites,
-            @Value("${anvil.loop.explore-sub-agent:true}") boolean exploreSubAgent,
+            @Value("${anvil.loop.explore-sub-agent:false}") boolean exploreSubAgent,
             @Value("${anvil.loop.planner-required:true}") boolean plannerRequired,
-            @Value("${anvil.loop.explore-max-steps:6}") int exploreMaxSteps,
+            @Value("${anvil.loop.explore-max-steps:4}") int exploreMaxSteps,
+            @Value("${anvil.loop.explore-max-tokens-budget:8000}") int exploreMaxTokensBudget,
+            @Value("${anvil.loop.token-budget-per-run:500000}") long tokenBudgetPerRun,
             @Value("${anvil.model.routing.enabled:true}") boolean modelRoutingEnabled,
             @Value("${anvil.model.routing.explore:deepseek:deepseek-chat}") String exploreModel,
             @Value("${anvil.model.routing.edit:deepseek:deepseek-chat}") String editModel,
@@ -56,6 +60,8 @@ public final class AnvilContextConfig {
         this.exploreSubAgent = exploreSubAgent;
         this.plannerRequired = plannerRequired;
         this.exploreMaxSteps = exploreMaxSteps;
+        this.exploreMaxTokensBudget = exploreMaxTokensBudget;
+        this.tokenBudgetPerRun = tokenBudgetPerRun;
         this.verifyConfig = new VerifyConfig(
                 verifyAutoAfterWrite,
                 verifyCommandTemplate,
@@ -63,7 +69,14 @@ public final class AnvilContextConfig {
                 verifyInjectFailures,
                 verifyAutoCompileAfterWrite,
                 verifyForceFixOnFailure);
-        this.loopConfig = new LoopConfig(parallelReadTools, parallelWrites, exploreSubAgent, plannerRequired, exploreMaxSteps);
+        this.loopConfig = new LoopConfig(
+                parallelReadTools,
+                parallelWrites,
+                exploreSubAgent,
+                plannerRequired,
+                exploreMaxSteps,
+                exploreMaxTokensBudget,
+                tokenBudgetPerRun);
         this.modelRouting = new ModelRoutingConfig(modelRoutingEnabled, exploreModel, editModel, planModel);
     }
 
@@ -105,7 +118,9 @@ public final class AnvilContextConfig {
                 parallelWrites && preset.parallelWrites(),
                 exploreSubAgent && preset.exploreSubAgent(),
                 plannerRequired && preset.plannerRequired(),
-                exploreMaxSteps > 0 ? exploreMaxSteps : preset.exploreMaxSteps());
+                exploreMaxSteps > 0 ? exploreMaxSteps : preset.exploreMaxSteps(),
+                exploreMaxTokensBudget > 0 ? exploreMaxTokensBudget : preset.exploreMaxTokensBudget(),
+                tokenBudgetPerRun > 0 ? tokenBudgetPerRun : preset.tokenBudgetPerRun());
     }
 
     public ModelRoutingConfig modelRouting() {

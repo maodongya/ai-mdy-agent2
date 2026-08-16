@@ -9,28 +9,28 @@ public record ContextBudget(
 
     public ContextBudget {
         if (compactThresholdTokens <= 0) {
-            compactThresholdTokens = 120_000;
+            compactThresholdTokens = 40_000;
         }
         if (targetTokensAfterCompact <= 0) {
             targetTokensAfterCompact = (int) (compactThresholdTokens * 0.65);
         }
         if (keepRecentMessages <= 0) {
-            keepRecentMessages = 12;
+            keepRecentMessages = 10;
         }
         if (maxToolContentChars <= 0) {
-            maxToolContentChars = 8_000;
+            maxToolContentChars = 4_000;
         }
     }
 
     public static ContextBudget standard() {
-        return new ContextBudget(120_000, 80_000, 12, 8_000);
+        return new ContextBudget(40_000, 28_000, 10, 4_000);
     }
 
     public static ContextBudget extended() {
-        return new ContextBudget(200_000, 130_000, 24, 16_000);
+        return new ContextBudget(60_000, 40_000, 16, 8_000);
     }
 
     public static ContextBudget complex() {
-        return new ContextBudget(280_000, 180_000, 32, 24_000);
+        return new ContextBudget(100_000, 65_000, 24, 12_000);
     }
 }

@@ -36,4 +36,40 @@ class PromptBuilderTest {
         assertEquals("user", bundle.input().get(bundle.input().size() - 1).get("role"));
         assertTrue(bundle.input().get(0).get("content").toString().contains("AGENTS"));
     }
+
+    @Test
+    void laterStepOmitsHeavyDeveloperBlocks() throws Exception {
+        Files.writeString(workspace.resolve("AGENTS.md"), "# Agents\nRun tests");
+        PromptBundle first = PromptBuilder.build(
+                Mode.AGENT,
+                workspace,
+                SandboxTier.WORKSPACE_WRITE,
+                "main",
+                List.of(),
+                null,
+                List.of(),
+                PromptBuildOptions.firstStep());
+        PromptBundle later = PromptBuilder.build(
+                Mode.AGENT,
+                workspace,
+                SandboxTier.WORKSPACE_WRITE,
+                "main",
+                List.of(),
+                null,
+                List.of(),
+                new PromptBuildOptions(3, false, false));
+
+        long firstChars = developerChars(first);
+        long laterChars = developerChars(later);
+        assertTrue(firstChars > laterChars);
+        assertTrue(first.input().stream().anyMatch(m -> String.valueOf(m.get("content")).contains("<anti_patterns>")));
+        assertTrue(later.input().stream().noneMatch(m -> String.valueOf(m.get("content")).contains("<anti_patterns>")));
+    }
+
+    private static long developerChars(PromptBundle bundle) {
+        return bundle.input().stream()
+                .filter(m -> "developer".equals(m.get("role")))
+                .mapToLong(m -> String.valueOf(m.get("content")).length())
+                .sum();
+    }
 }

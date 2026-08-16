@@ -9,8 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RunProfileTest {
 
     @Test
-    void defaultsAgentToExtended() {
-        assertEquals(RunProfile.EXTENDED, RunProfile.defaultFor(Mode.AGENT));
+    void defaultsLeanStandard() {
+        assertEquals(RunProfile.STANDARD, RunProfile.defaultFor(Mode.AGENT));
         assertEquals(RunProfile.STANDARD, RunProfile.defaultFor(Mode.ASK));
     }
 

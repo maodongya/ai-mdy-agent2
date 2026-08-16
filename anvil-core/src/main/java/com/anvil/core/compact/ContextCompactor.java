@@ -2,11 +2,16 @@ package com.anvil.core.compact;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /** Heuristic context compaction with summaries for long / complex runs. */
 public final class ContextCompactor {
+
+    private static final Set<String> WRITE_TOOLS =
+            Set.of("fs.write", "search_replace", "apply_patch", "edit.plan");
 
     private ContextCompactor() {}
 
@@ -99,46 +104,127 @@ public final class ContextCompactor {
                 continue;
             }
             Map<String, Object> copy = new LinkedHashMap<>(msg);
+            String toolName = String.valueOf(msg.getOrDefault("name", ""));
             copy.put(
                     "content",
-                    truncateContent(String.valueOf(msg.getOrDefault("content", "")), budget.maxToolContentChars()));
+                    ToolContentBudget.apply(
+                            String.valueOf(msg.getOrDefault("content", "")), toolName, budget.maxToolContentChars()));
             out.add(copy);
         }
         return out;
+    }
+
+    /** Phase 11.5: cross-run thread memory trim — summary + recent tail. */
+    public static List<Map<String, Object>> trimForThreadMemory(List<Map<String, Object>> messages, int keepRecent) {
+        if (messages == null || messages.isEmpty() || messages.size() <= keepRecent) {
+            return messages == null ? List.of() : List.copyOf(messages);
+        }
+        List<Map<String, Object>> pinned = new ArrayList<>();
+        List<Map<String, Object>> rest = new ArrayList<>();
+        for (Map<String, Object> msg : messages) {
+            String role = String.valueOf(msg.getOrDefault("role", ""));
+            if ("developer".equals(role) || "system".equals(role)) {
+                pinned.add(msg);
+            } else {
+                rest.add(msg);
+            }
+        }
+        if (rest.size() <= keepRecent) {
+            return List.copyOf(messages);
+        }
+        int start = rest.size() - keepRecent;
+        start = MessageHistorySanitizer.alignTailStart(rest, start);
+        List<Map<String, Object>> dropped = rest.subList(0, start);
+        List<Map<String, Object>> recent = rest.subList(start, rest.size());
+        List<Map<String, Object>> out = new ArrayList<>(pinned);
+        out.add(Map.of("role", "developer", "content", summarizeDropped(dropped, null)));
+        out.addAll(recent);
+        return List.copyOf(out);
     }
 
     private static String summarizeDropped(List<Map<String, Object>> dropped, RunAnchors anchors) {
         if (dropped.isEmpty()) {
             return anchorPrefix(anchors) + "[compaction] Context trimmed to fit budget.";
         }
-        StringBuilder sb = new StringBuilder();
-        sb.append(anchorPrefix(anchors));
-        sb.append("[compaction] Summarized ").append(dropped.size()).append(" earlier turns:\n");
-        int lines = 0;
+        Set<String> filesRead = new LinkedHashSet<>();
+        Set<String> filesChanged = new LinkedHashSet<>();
+        List<String> failures = new ArrayList<>();
+        List<String> bullets = new ArrayList<>();
+
         for (Map<String, Object> msg : dropped) {
-            if (lines >= 24) {
-                sb.append("- … ").append(dropped.size() - lines).append(" more omitted\n");
-                break;
-            }
             String role = String.valueOf(msg.getOrDefault("role", "?"));
             switch (role) {
-                case "tool" -> sb.append("- tool ")
-                        .append(msg.getOrDefault("name", "?"))
-                        .append(": ")
-                        .append(firstLine(String.valueOf(msg.getOrDefault("content", "")), 100))
-                        .append('\n');
-                case "user" -> sb.append("- user: ")
-                        .append(firstLine(String.valueOf(msg.getOrDefault("content", "")), 100))
-                        .append('\n');
-                case "assistant" -> sb.append("- assistant")
-                        .append(msg.containsKey("tool_calls") ? " (tool calls)" : "")
-                        .append('\n');
-                default -> sb.append("- ").append(role).append('\n');
+                case "tool" -> {
+                    String name = String.valueOf(msg.getOrDefault("name", "?"));
+                    String content = String.valueOf(msg.getOrDefault("content", ""));
+                    if ("fs.read".equals(name)) {
+                        extractPaths(content).forEach(filesRead::add);
+                    }
+                    if (WRITE_TOOLS.contains(name)) {
+                        extractPaths(content).forEach(filesChanged::add);
+                    }
+                    if ("error".equals(String.valueOf(msg.getOrDefault("status", "")))) {
+                        failures.add(name + ": " + firstLine(content, 80));
+                    }
+                    if (bullets.size() < 16) {
+                        bullets.add("- tool " + name + ": " + firstLine(content, 80));
+                    }
+                }
+                case "user" -> {
+                    if (bullets.size() < 16) {
+                        bullets.add("- user: " + firstLine(String.valueOf(msg.getOrDefault("content", "")), 80));
+                    }
+                }
+                case "assistant" -> {
+                    if (bullets.size() < 16) {
+                        bullets.add("- assistant" + (msg.containsKey("tool_calls") ? " (tool calls)" : ""));
+                    }
+                }
+                default -> {
+                    if (bullets.size() < 16) {
+                        bullets.add("- " + role);
+                    }
+                }
             }
-            lines++;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append(anchorPrefix(anchors));
+        sb.append("[compaction] Summarized ").append(dropped.size()).append(" earlier turns.\n");
+        if (!filesRead.isEmpty()) {
+            sb.append("files_read: ").append(String.join(", ", filesRead.stream().limit(12).toList())).append('\n');
+        }
+        if (!filesChanged.isEmpty()) {
+            sb.append("files_changed: ")
+                    .append(String.join(", ", filesChanged.stream().limit(12).toList()))
+                    .append('\n');
+        }
+        if (!failures.isEmpty()) {
+            sb.append("failures: ").append(String.join("; ", failures.stream().limit(6).toList())).append('\n');
+        }
+        for (String bullet : bullets) {
+            sb.append(bullet).append('\n');
+        }
+        if (dropped.size() > bullets.size()) {
+            sb.append("- … ").append(dropped.size() - bullets.size()).append(" more omitted\n");
         }
         sb.append("Continue from recent turns below. Do not re-fetch files already summarized unless needed.");
         return sb.toString().trim();
+    }
+
+    private static Set<String> extractPaths(String content) {
+        Set<String> paths = new LinkedHashSet<>();
+        if (content == null || content.isBlank()) {
+            return paths;
+        }
+        for (String line : content.split("\n")) {
+            String trimmed = line.trim();
+            if (trimmed.endsWith(".java") || trimmed.endsWith(".xml") || trimmed.endsWith(".md")) {
+                int idx = trimmed.indexOf(':');
+                paths.add(idx > 0 ? trimmed.substring(0, idx).trim() : trimmed);
+            }
+        }
+        return paths;
     }
 
     private static String anchorPrefix(RunAnchors anchors) {

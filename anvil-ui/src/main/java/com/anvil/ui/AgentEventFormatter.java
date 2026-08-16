@@ -137,7 +137,8 @@ final class AgentEventFormatter {
                 + " out="
                 + num(usage.get("output_tokens"))
                 + " tools="
-                + num(usage.get("tool_calls"));
+                + num(usage.get("tool_calls"))
+                + cacheSuffix(usage);
     }
 
     private static String formatModelCompleted(Map<String, Object> payload) {
@@ -149,6 +150,11 @@ final class AgentEventFormatter {
             sb.append(" out=").append(num(payload.get("output_tokens")));
             if (payload.get("cached_tokens") != null) {
                 sb.append(" cached=").append(num(payload.get("cached_tokens")));
+                Object in = payload.get("input_tokens");
+                if (in instanceof Number n && n.longValue() > 0 && payload.get("cached_tokens") instanceof Number c) {
+                    int pct = (int) Math.round(100.0 * c.longValue() / n.longValue());
+                    sb.append(" (").append(pct).append("% cache)");
+                }
             }
             sb.append(" · ").append(num(payload.get("latency_ms"))).append("ms");
         }
@@ -174,6 +180,14 @@ final class AgentEventFormatter {
     private static String formatRunFailed(Map<String, Object> payload) {
         Map<String, Object> err = (Map<String, Object>) payload.getOrDefault("error", Map.of());
         return "run failed · " + str(err.get("message"), "unknown error") + usageSuffix(payload.get("usage"));
+    }
+
+    private static String cacheSuffix(Map<String, Object> usage) {
+        Object ratio = usage.get("cache_hit_ratio");
+        if (ratio instanceof Number n) {
+            return " cache=" + Math.round(n.doubleValue() * 100) + "%";
+        }
+        return "";
     }
 
     private static String usageSuffix(Object usageObj) {

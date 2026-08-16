@@ -6,8 +6,8 @@ import com.anvil.protocol.Mode;
 /** Presets for run depth: steps + context budget. */
 public enum RunProfile {
     STANDARD(40, ContextBudget.standard()),
-    EXTENDED(100, ContextBudget.extended()),
-    COMPLEX(200, ContextBudget.complex());
+    EXTENDED(60, ContextBudget.extended()),
+    COMPLEX(100, ContextBudget.complex());
 
     private final int defaultMaxSteps;
     private final ContextBudget contextBudget;
@@ -36,11 +36,8 @@ public enum RunProfile {
         };
     }
 
-    /** Agent/plan modes default to extended; others stay standard unless overridden. */
+    /** Phase 11: lean default — extended/complex require explicit selection. */
     public static RunProfile defaultFor(Mode mode) {
-        return switch (mode) {
-            case AGENT, PLAN, DEBUG -> EXTENDED;
-            default -> STANDARD;
-        };
+        return STANDARD;
     }
 }

@@ -83,7 +83,7 @@ public final class CodebaseSearchTool {
             }
             sb.append(hit.path).append(" (score=").append(hit.totalScore()).append(")\n");
             if (!hit.snippets.isEmpty()) {
-                for (Snippet sn : hit.snippets.stream().limit(3).toList()) {
+                for (Snippet sn : hit.snippets.stream().limit(2).toList()) {
                     sb.append("  L").append(sn.startLine());
                     if (sn.endLine() > sn.startLine()) {
                         sb.append('-').append(sn.endLine());
@@ -118,8 +118,8 @@ public final class CodebaseSearchTool {
             hit.semanticScore += sc.score();
             hit.semanticHits++;
             String preview = sc.chunk().text().replace('\n', ' ').trim();
-            if (preview.length() > 180) {
-                preview = preview.substring(0, 177) + "...";
+            if (preview.length() > 120) {
+                preview = preview.substring(0, 117) + "...";
             }
             hit.snippets.add(new Snippet(sc.chunk().startLine(), sc.chunk().endLine(), preview));
         }

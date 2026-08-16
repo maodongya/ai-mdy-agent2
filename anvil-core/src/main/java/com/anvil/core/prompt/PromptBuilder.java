@@ -13,6 +13,8 @@ import java.util.Map;
 /** Codex-style instructions / tools / input assembly (Prompt 2.0). */
 public final class PromptBuilder {
 
+    private static final int AGENTS_SUMMARY_THRESHOLD = 2_000;
+
     private PromptBuilder() {}
 
     public static PromptBundle build(
@@ -23,20 +25,33 @@ public final class PromptBuilder {
             List<Map<String, Object>> history,
             String userMessage,
             List<Map<String, Object>> toolSchemas) {
+        return build(
+                mode,
+                workspaceRoot,
+                sandboxTier,
+                gitBranch,
+                history,
+                userMessage,
+                toolSchemas,
+                PromptBuildOptions.firstStep());
+    }
 
+    public static PromptBundle build(
+            Mode mode,
+            Path workspaceRoot,
+            SandboxTier sandboxTier,
+            String gitBranch,
+            List<Map<String, Object>> history,
+            String userMessage,
+            List<Map<String, Object>> toolSchemas,
+            PromptBuildOptions options) {
+
+        PromptBuildOptions opts = options == null ? PromptBuildOptions.firstStep() : options;
         String instructions = buildInstructions(mode);
-        List<Map<String, Object>> tools = stableTools(toolSchemas);
+        List<Map<String, Object>> tools = opts.omitTools() ? List.of() : stableTools(toolSchemas);
 
         List<Map<String, Object>> input = new ArrayList<>();
-        String agents = com.anvil.core.instructions.InstructionLoader.loadForWorkspace(workspaceRoot);
-        if (!agents.isBlank()) {
-            input.add(message("developer", agents));
-        }
-        input.add(message("developer", environmentBlock(workspaceRoot, sandboxTier, gitBranch)));
-        input.add(message("developer", PromptCatalog.modeInstructions(mode)));
-        input.add(message("developer", PromptCatalog.antiPatterns()));
-        input.add(message("developer", PromptCatalog.toolFewShots(mode)));
-        input.add(message("developer", toolGuidanceBlock(mode)));
+        appendDeveloperPrefix(input, mode, workspaceRoot, sandboxTier, gitBranch, opts);
         if (history != null) {
             input.addAll(history);
         }
@@ -45,6 +60,30 @@ public final class PromptBuilder {
         }
 
         return new PromptBundle(instructions, tools, List.copyOf(input));
+    }
+
+    private static void appendDeveloperPrefix(
+            List<Map<String, Object>> input,
+            Mode mode,
+            Path workspaceRoot,
+            SandboxTier sandboxTier,
+            String gitBranch,
+            PromptBuildOptions opts) {
+        String agents = com.anvil.core.instructions.InstructionLoader.loadForWorkspace(workspaceRoot);
+        if (!agents.isBlank()) {
+            if (agents.length() > AGENTS_SUMMARY_THRESHOLD) {
+                input.add(message("developer", com.anvil.core.instructions.InstructionLoader.summarize(agents)));
+            } else {
+                input.add(message("developer", agents));
+            }
+        }
+        input.add(message("developer", environmentBlock(workspaceRoot, sandboxTier, gitBranch)));
+        if (opts.includeFullGuidance()) {
+            input.add(message("developer", PromptCatalog.modeInstructions(mode)));
+            input.add(message("developer", PromptCatalog.antiPatterns()));
+            input.add(message("developer", PromptCatalog.toolFewShots(mode)));
+        }
+        input.add(message("developer", toolGuidanceBlock(mode)));
     }
 
     private static String buildInstructions(Mode mode) {

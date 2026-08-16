@@ -1,11 +1,15 @@
 package com.anvil.core.loop;
 
+import com.anvil.core.compact.ArtifactStore;
 import com.anvil.core.compact.ContextBudget;
 import com.anvil.core.compact.ContextCompactor;
 import com.anvil.core.compact.MessageHistorySanitizer;
+import com.anvil.core.compact.ReadCache;
+import com.anvil.core.compact.ToolContentBudget;
 import com.anvil.core.instructions.PlanLoader;
 import com.anvil.core.instructions.SkillLoader;
 import com.anvil.core.orchestrator.ExploreAgent;
+import com.anvil.core.orchestrator.ExploreGate;
 import com.anvil.core.orchestrator.PlanParser;
 import com.anvil.core.orchestrator.PlannerGate;
 import com.anvil.core.model.ModelProvider;
@@ -16,6 +20,7 @@ import com.anvil.core.model.ToolCallIntent;
 import com.anvil.core.policy.Decision;
 import com.anvil.core.policy.PolicyEngine;
 import com.anvil.core.policy.PolicyInput;
+import com.anvil.core.prompt.PromptBuildOptions;
 import com.anvil.core.prompt.PromptBuilder;
 import com.anvil.core.prompt.PromptBundle;
 import com.anvil.core.tools.ToolExecutor;
@@ -95,10 +100,11 @@ public final class LoopEngine {
             RunContext ctx) {
         ToolExecutor tools = new ToolExecutor(request.workspaceRoot(), request.shellTimeoutMs(), options.mcpBridge());
         ContextBudget budget = options.contextBudget();
+        ctx.configureTokenBudget(options.loopConfig().tokenBudgetPerRun());
 
         seedHistory(ctx, request, priorHistory, budget, options.runProfile(), options.loopConfig());
 
-        if (options.loopConfig().exploreSubAgent()) {
+        if (ExploreGate.shouldRun(options.runProfile(), options.loopConfig(), request.userMessage())) {
             ExploreAgent.ExploreReport explore = ExploreAgent.run(
                     request.workspaceRoot(),
                     request.mode(),
@@ -106,6 +112,7 @@ public final class LoopEngine {
                     model,
                     request.shellTimeoutMs(),
                     options.loopConfig().exploreMaxSteps(),
+                    options.loopConfig().exploreMaxTokensBudget(),
                     ctx);
             if (explore.markdown() != null && !explore.markdown().isBlank()) {
                 ctx.appendHistory(Map.of("role", "developer", "content", explore.markdown()));
@@ -148,6 +155,7 @@ public final class LoopEngine {
             ContextCompactor.Result compacted = ContextCompactor.compact(ctx.history(), budget, ctx.anchors());
             if (compacted.compacted()) {
                 ctx.replaceHistory(compacted.messages());
+                ctx.markCompacted();
                 ctx.emit(
                         "context.compacted",
                         Map.of(
@@ -156,6 +164,10 @@ public final class LoopEngine {
                                 "keep_recent", budget.keepRecentMessages()));
             }
 
+            boolean afterCompaction = ctx.consumeJustCompacted();
+            boolean omitTools = ctx.consumeOmitToolsNextStep();
+            PromptBuildOptions promptOpts =
+                    new PromptBuildOptions(step, afterCompaction, omitTools);
             PromptBundle prompt = PromptBuilder.build(
                     request.mode(),
                     request.workspaceRoot(),
@@ -163,7 +175,8 @@ public final class LoopEngine {
                     options.gitBranch(),
                     ctx.history(),
                     null,
-                    options.toolSchemas());
+                    options.toolSchemas(),
+                    promptOpts);
 
             int contextMessages = ctx.history().size();
             int contextTokens = ContextCompactor.estimateTokens(ctx.history());
@@ -173,7 +186,7 @@ public final class LoopEngine {
                             "step", step + 1,
                             "context_messages", contextMessages,
                             "context_tokens_estimate", contextTokens,
-                            "tools_available", options.toolSchemas().size()));
+                            "tools_available", prompt.tools().size()));
 
             int stepNumber = step + 1;
             String messageId = "msg_" + stepNumber;
@@ -267,7 +280,7 @@ public final class LoopEngine {
                 "role",
                 "developer",
                 "content",
-                "<active_plan path=\"" + PlanTool.PLAN_PATH + "\">\n" + plan + "\n</active_plan>")));
+                PlanParser.formatActivePlanBlock(plan))));
         if (request.editorContext() != null && !request.editorContext().isBlank()) {
             ctx.appendHistory(Map.of("role", "developer", "content", request.editorContext()));
         }
@@ -291,14 +304,25 @@ public final class LoopEngine {
         ctx.appendHistory(turn.toHistoryMessage());
     }
 
-    private static void recordToolFailure(RunContext ctx, ToolCallIntent call, String code, String message, ContextBudget budget) {
+    private static void recordToolFailure(
+            RunContext ctx,
+            ToolCallIntent call,
+            String code,
+            String message,
+            ContextBudget budget,
+            Path workspaceRoot) {
         ctx.emit(
                 "tool.failed",
                 Map.of("tool_call_id", call.id(), "error", errorMap(code, message)));
-        appendToolHistory(ctx, call, "error", "", code, message, budget);
+        appendToolHistory(ctx, call, "error", "", code, message, budget, workspaceRoot);
     }
 
-    private static void recordToolOutcome(RunContext ctx, ToolCallIntent call, ToolResult result, ContextBudget budget) {
+    private static void recordToolOutcome(
+            RunContext ctx,
+            ToolCallIntent call,
+            ToolResult result,
+            ContextBudget budget,
+            Path workspaceRoot) {
         if ("ok".equals(result.status())) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("tool_call_id", result.toolCallId());
@@ -319,10 +343,10 @@ public final class LoopEngine {
             ctx.emit(
                     "tool.failed",
                     Map.of("tool_call_id", result.toolCallId(), "error", errorMap(error)));
-            appendToolHistory(ctx, call, result.status(), result.content(), error.code(), error.message(), budget);
+            appendToolHistory(ctx, call, result.status(), result.content(), error.code(), error.message(), budget, workspaceRoot);
             return;
         }
-        appendToolHistory(ctx, call, result.status(), result.content(), null, null, budget);
+        appendToolHistory(ctx, call, result.status(), result.content(), null, null, budget, workspaceRoot);
     }
 
     private static void appendToolHistory(
@@ -332,17 +356,72 @@ public final class LoopEngine {
             String content,
             String errorCode,
             String errorMessage,
-            ContextBudget budget) {
+            ContextBudget budget,
+            Path workspaceRoot) {
+        String prepared = prepareToolContent(ctx, call, status, content, budget, workspaceRoot);
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("role", "tool");
         item.put("tool_call_id", call.id());
         item.put("name", call.name());
         item.put("status", status);
-        item.put("content", ContextCompactor.truncateContent(content, budget.maxToolContentChars()));
+        item.put("content", prepared);
         if (errorCode != null) {
             item.put("error", errorMap(errorCode, errorMessage == null ? "" : errorMessage));
         }
         ctx.appendHistory(item);
+    }
+
+    private static String prepareToolContent(
+            RunContext ctx,
+            ToolCallIntent call,
+            String status,
+            String content,
+            ContextBudget budget,
+            Path workspaceRoot) {
+        if (content == null) {
+            content = "";
+        }
+        if ("ok".equals(status) && "fs.read".equals(call.name()) && call.arguments() != null) {
+            String path = stringArg(call.arguments(), "path");
+            Integer offset = intArg(call.arguments(), "offset");
+            Integer limit = intArg(call.arguments(), "limit");
+            String key = ReadCache.cacheKey(path, offset, limit);
+            ReadCache.CachedRead cached = ctx.readCache().get(key);
+            if (cached != null && cached.content().equals(content)) {
+                return "[same as prior fs.read of "
+                        + path
+                        + " in tool_call_id "
+                        + cached.toolCallId()
+                        + "; use that content]";
+            }
+            ctx.readCache().put(key, call.id(), content);
+        }
+        ArtifactStore.SpillResult spill =
+                ArtifactStore.maybeSpill(workspaceRoot, ctx.runId(), call.id(), content);
+        if (spill.artifactRef() != null) {
+            ctx.emit("context.artifact.stored", Map.of("tool_call_id", call.id(), "ref", spill.artifactRef()));
+        }
+        return ToolContentBudget.apply(spill.historyContent(), call.name(), budget.maxToolContentChars());
+    }
+
+    private static String stringArg(Map<String, Object> args, String key) {
+        Object v = args.get(key);
+        return v == null ? "" : String.valueOf(v);
+    }
+
+    private static Integer intArg(Map<String, Object> args, String key) {
+        Object v = args.get(key);
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     private static Map<String, Object> completedPayload(RunContext ctx, String status) {
@@ -570,7 +649,7 @@ public final class LoopEngine {
                 options.loopConfig().plannerRequired(),
                 ctx.plannerPhaseComplete(),
                 call.name())) {
-            recordToolFailure(ctx, call, ErrorCodes.POLICY_DENIED, PlannerGate.blockedMessage(), budget);
+            recordToolFailure(ctx, call, ErrorCodes.POLICY_DENIED, PlannerGate.blockedMessage(), budget, request.workspaceRoot());
             return false;
         }
 
@@ -580,7 +659,7 @@ public final class LoopEngine {
                 request.mode(), call.name(), sideEffect, preview, ctx.sessionAllows(), options.autoApprovePatchTools(), options.autoApproveWrites()));
 
         if (decision.type() == Decision.Type.DENY) {
-            recordToolFailure(ctx, call, decision.code(), decision.message(), budget);
+            recordToolFailure(ctx, call, decision.code(), decision.message(), budget, request.workspaceRoot());
             return false;
         }
 
@@ -601,7 +680,7 @@ public final class LoopEngine {
                         .get(request.approvalTimeoutMs(), TimeUnit.MILLISECONDS);
             } catch (TimeoutException e) {
                 ctx.emit("approval.resolved", Map.of("approval_id", approvalId, "decision", "timeout"));
-                recordToolFailure(ctx, call, ErrorCodes.APPROVAL_TIMEOUT, "approval timeout", budget);
+                recordToolFailure(ctx, call, ErrorCodes.APPROVAL_TIMEOUT, "approval timeout", budget, request.workspaceRoot());
                 return false;
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -613,14 +692,15 @@ public final class LoopEngine {
                         call,
                         ErrorCodes.INTERNAL,
                         e.getCause() == null ? e.getMessage() : e.getCause().getMessage(),
-                        budget);
+                        budget,
+                        request.workspaceRoot());
                 return false;
             }
 
             ctx.emit("approval.resolved", Map.of("approval_id", approvalId, "decision", approvalDecision.wireValue()));
 
             if (approvalDecision == ApprovalDecision.DENY || approvalDecision == ApprovalDecision.ALWAYS_DENY) {
-                recordToolFailure(ctx, call, ErrorCodes.APPROVAL_DENIED, "approval denied", budget);
+                recordToolFailure(ctx, call, ErrorCodes.APPROVAL_DENIED, "approval denied", budget, request.workspaceRoot());
                 return false;
             }
             if (approvalDecision == ApprovalDecision.ALLOW_SESSION) {
@@ -639,7 +719,7 @@ public final class LoopEngine {
             ToolCallIntent call,
             ToolResult result,
             String previousContent) {
-        recordToolOutcome(ctx, call, result, budget);
+        recordToolOutcome(ctx, call, result, budget, request.workspaceRoot());
         trackToolAnchors(ctx, call, result);
         if (VerifyPass.isWriteTool(call.name())) {
             ctx.recordWriteToolOutcome("ok".equals(result.status()));
@@ -650,7 +730,7 @@ public final class LoopEngine {
             ctx.markPlannerPhaseComplete();
             ctx.emit("planner.completed", Map.of("steps", steps.size()));
             if (!steps.isEmpty()) {
-                ctx.appendHistory(Map.of("role", "developer", "content", PlanParser.formatStepsBlock(steps)));
+                ctx.appendHistory(Map.of("role", "developer", "content", PlanParser.formatStepsSummary(steps)));
             }
         }
         if ("ok".equals(result.status()) && VerifyPass.isWriteTool(call.name())) {

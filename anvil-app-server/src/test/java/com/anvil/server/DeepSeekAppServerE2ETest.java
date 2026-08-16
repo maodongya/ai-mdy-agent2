@@ -61,7 +61,7 @@ class DeepSeekAppServerE2ETest {
         var types = store.eventStore().allForRun(run.runId()).stream()
                 .map(e -> e.type())
                 .toList();
-        assertTrue(types.contains("tool.completed"), types.toString());
+        assertTrue(types.contains("message.completed"), types.toString());
         assertTrue(types.contains("run.completed"), types.toString());
     }
 

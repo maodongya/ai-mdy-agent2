@@ -41,6 +41,26 @@ public final class InstructionLoader {
         return String.join("\n\n", sections);
     }
 
+    /** Phase 11: compact AGENTS/rules block when full text exceeds budget. */
+    public static String summarize(String fullText) {
+        if (fullText == null || fullText.isBlank()) {
+            return "";
+        }
+        if (fullText.length() <= 2000) {
+            return fullText;
+        }
+        String head = fullText.substring(0, 1800).trim();
+        int sections = (int) fullText.chars().filter(ch -> ch == '#').count();
+        return """
+                <agents_summary>
+                %s
+                … [%d chars omitted; %d sections — use fs.read on AGENTS.md or .cursor/rules for full text]
+                </agents_summary>
+                """
+                .formatted(head, fullText.length() - head.length(), Math.max(1, sections))
+                .trim();
+    }
+
     private static void loadCursorRules(List<String> sections, Path rulesDir) {
         try (Stream<Path> files = Files.list(rulesDir)) {
             files.filter(p -> Files.isRegularFile(p) && p.getFileName().toString().endsWith(".md"))
