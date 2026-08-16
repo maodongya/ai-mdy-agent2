@@ -140,6 +140,10 @@ public final class LoopEngine {
                 ctx.emit("run.cancelled", Map.of("reason", "user"));
                 return result(ctx, RunStatus.CANCELLED);
             }
+            if (ctx.shouldAbortRun()) {
+                ctx.emit("run.failed", Map.of("error", errorMap(ctx.abortCode(), ctx.abortMessage())));
+                return result(ctx, ctx.abortStatus());
+            }
 
             ContextCompactor.Result compacted = ContextCompactor.compact(ctx.history(), budget, ctx.anchors());
             if (compacted.compacted()) {
@@ -189,6 +193,13 @@ public final class LoopEngine {
             if (turn.isMessage()) {
                 if (ctx.isVerifyFixRequired()) {
                     ctx.appendHistory(Map.of("role", "assistant", "content", turn.messageText()));
+                    ctx.recordVerifyFixTextOnlyRetry();
+                    if (ctx.shouldAbortRun()) {
+                        ctx.emit(
+                                "run.failed",
+                                Map.of("error", errorMap(ctx.abortCode(), ctx.abortMessage())));
+                        return result(ctx, ctx.abortStatus());
+                    }
                     ctx.appendHistory(
                             Map.of(
                                     "role",
@@ -209,8 +220,12 @@ public final class LoopEngine {
 
             ctx.incrementToolCalls(turn.toolCalls().size());
 
-            appendAssistantToolCalls(ctx, turn.toolCalls());
+            appendAssistantToolCalls(ctx, turn);
             executeToolTurn(request, model, approvalGate, options, tools, budget, ctx, turn.toolCalls());
+            if (ctx.shouldAbortRun()) {
+                ctx.emit("run.failed", Map.of("error", errorMap(ctx.abortCode(), ctx.abortMessage())));
+                return result(ctx, ctx.abortStatus());
+            }
         }
 
         ctx.emit("run.failed", Map.of("error", errorMap(ErrorCodes.BUDGET_EXCEEDED, "max steps exceeded")));
@@ -272,25 +287,8 @@ public final class LoopEngine {
         return new LoopResult(ctx.events(), status, ctx.history());
     }
 
-    private static void appendAssistantToolCalls(RunContext ctx, List<ToolCallIntent> calls) {
-        List<Map<String, Object>> toolCalls = new ArrayList<>();
-        for (ToolCallIntent call : calls) {
-            Map<String, Object> function = new LinkedHashMap<>();
-            function.put("name", call.name());
-            function.put(
-                    "arguments",
-                    ProtocolJson.toJson(call.arguments() == null ? Map.of() : call.arguments()));
-            Map<String, Object> tc = new LinkedHashMap<>();
-            tc.put("id", call.id());
-            tc.put("type", "function");
-            tc.put("function", function);
-            toolCalls.add(tc);
-        }
-        Map<String, Object> assistant = new LinkedHashMap<>();
-        assistant.put("role", "assistant");
-        assistant.put("content", "");
-        assistant.put("tool_calls", toolCalls);
-        ctx.appendHistory(assistant);
+    private static void appendAssistantToolCalls(RunContext ctx, ModelTurn turn) {
+        ctx.appendHistory(turn.toHistoryMessage());
     }
 
     private static void recordToolFailure(RunContext ctx, ToolCallIntent call, String code, String message, ContextBudget budget) {
@@ -643,6 +641,9 @@ public final class LoopEngine {
             String previousContent) {
         recordToolOutcome(ctx, call, result, budget);
         trackToolAnchors(ctx, call, result);
+        if (VerifyPass.isWriteTool(call.name())) {
+            ctx.recordWriteToolOutcome("ok".equals(result.status()));
+        }
         if ("ok".equals(result.status()) && "plan.update".equals(call.name())) {
             Object content = call.arguments() == null ? null : call.arguments().get("content");
             List<String> steps = PlanParser.steps(content == null ? "" : String.valueOf(content));

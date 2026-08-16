@@ -49,7 +49,9 @@ public final class OpenAiModelProvider implements ModelProvider {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("model", config.model());
             body.put("stream", true);
-            body.put("stream_options", Map.of("include_usage", true));
+            if (config.supportsStreamUsageOption()) {
+                body.put("stream_options", Map.of("include_usage", true));
+            }
             body.put("messages", toMessages(prompt));
             OpenAiToolFormat.NormalizedTools normalizedTools = OpenAiToolFormat.normalize(
                     prompt.tools(), config.strictToolNames());
@@ -80,10 +82,10 @@ public final class OpenAiModelProvider implements ModelProvider {
                 for (var e : agg.toolCalls.entrySet()) {
                     calls.add(new ToolCallIntent(e.getKey(), e.getValue().name, e.getValue().arguments));
                 }
-                return Optional.of(new ModelTurn(null, calls, usage));
+                return Optional.of(new ModelTurn(null, calls, usage, agg.reasoningContent));
             }
             if (agg.text != null && !agg.text.isBlank()) {
-                return Optional.of(new ModelTurn(agg.text, List.of(), usage));
+                return Optional.of(new ModelTurn(agg.text, List.of(), usage, agg.reasoningContent));
             }
             return Optional.empty();
         } catch (Exception e) {
@@ -91,7 +93,7 @@ public final class OpenAiModelProvider implements ModelProvider {
         }
     }
 
-    private static List<Map<String, Object>> toMessages(PromptBundle prompt) {
+    private List<Map<String, Object>> toMessages(PromptBundle prompt) {
         List<Map<String, Object>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", prompt.instructions()));
         for (Map<String, Object> item : MessageHistorySanitizer.sanitize(prompt.input())) {
@@ -105,7 +107,18 @@ public final class OpenAiModelProvider implements ModelProvider {
                 msg.put("role", "assistant");
                 msg.put("content", String.valueOf(item.getOrDefault("content", "")));
                 if (item.containsKey("tool_calls")) {
-                    msg.put("tool_calls", item.get("tool_calls"));
+                    Object toolCalls = item.get("tool_calls");
+                    msg.put(
+                            "tool_calls",
+                            config.strictToolNames()
+                                    ? remapToolCallsForApi(toolCalls)
+                                    : toolCalls);
+                }
+                if (config.strictToolNames() && item.containsKey("reasoning_content")) {
+                    Object reasoning = item.get("reasoning_content");
+                    if (reasoning != null && !String.valueOf(reasoning).isBlank()) {
+                        msg.put("reasoning_content", String.valueOf(reasoning));
+                    }
                 }
                 messages.add(msg);
                 continue;
@@ -161,6 +174,12 @@ public final class OpenAiModelProvider implements ModelProvider {
                     }
                 }
             }
+            if (delta.has("reasoning_content")) {
+                String piece = delta.get("reasoning_content").asText("");
+                if (!piece.isEmpty()) {
+                    agg.reasoningContent = (agg.reasoningContent == null ? "" : agg.reasoningContent) + piece;
+                }
+            }
             if (delta.has("tool_calls")) {
                 for (JsonNode tc : delta.get("tool_calls")) {
                     int index = tc.path("index").asInt(0);
@@ -208,8 +227,32 @@ public final class OpenAiModelProvider implements ModelProvider {
         return ModelUsage.estimate(0, 0, latencyMs);
     }
 
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> remapToolCallsForApi(Object raw) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> tc)) {
+                continue;
+            }
+            Map<String, Object> copy = new LinkedHashMap<>((Map<String, Object>) tc);
+            Object fn = copy.get("function");
+            if (fn instanceof Map<?, ?> fnMap) {
+                Map<String, Object> fnCopy = new LinkedHashMap<>((Map<String, Object>) fnMap);
+                String name = String.valueOf(fnCopy.getOrDefault("name", ""));
+                fnCopy.put("name", OpenAiToolFormat.toApiName(name));
+                copy.put("function", fnCopy);
+            }
+            out.add(copy);
+        }
+        return out;
+    }
+
     static final class StreamAggregate {
         String text;
+        String reasoningContent;
         JsonNode usage;
         Map<String, ToolCallAccum> toolCalls = new LinkedHashMap<>();
     }

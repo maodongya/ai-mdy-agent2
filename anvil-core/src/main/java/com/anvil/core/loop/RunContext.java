@@ -1,8 +1,10 @@
 package com.anvil.core.loop;
 
 import com.anvil.core.compact.RunAnchors;
+import com.anvil.protocol.ErrorCodes;
 import com.anvil.protocol.Event;
 import com.anvil.protocol.ProtocolConstants;
+import com.anvil.protocol.RunStatus;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -31,6 +33,13 @@ public final class RunContext {
     private int toolCallCount;
     private final RunAnchors anchors = new RunAnchors();
     private volatile boolean verifyFixRequired;
+    private int consecutiveWriteToolFailures;
+    private int verifyFixTextOnlyRetries;
+    private volatile boolean abortRun;
+    private volatile RunStatus abortStatus = RunStatus.FAILED;
+
+    private static final int MAX_CONSECUTIVE_WRITE_FAILURES = 5;
+    private static final int MAX_VERIFY_FIX_TEXT_RETRIES = 3;
 
     public RunContext(String threadId, String runId) {
         this(threadId, runId, null);
@@ -132,6 +141,55 @@ public final class RunContext {
 
     public void clearVerifyFixRequired() {
         verifyFixRequired = false;
+        verifyFixTextOnlyRetries = 0;
+    }
+
+    public void recordWriteToolOutcome(boolean ok) {
+        if (ok) {
+            consecutiveWriteToolFailures = 0;
+            return;
+        }
+        consecutiveWriteToolFailures++;
+        if (consecutiveWriteToolFailures >= MAX_CONSECUTIVE_WRITE_FAILURES) {
+            abortRun(ErrorCodes.TOOL_FAILED, "same write tool failed " + consecutiveWriteToolFailures + " times in a row");
+        }
+    }
+
+    public int recordVerifyFixTextOnlyRetry() {
+        verifyFixTextOnlyRetries++;
+        if (verifyFixTextOnlyRetries >= MAX_VERIFY_FIX_TEXT_RETRIES) {
+            abortRun(
+                    ErrorCodes.TOOL_FAILED,
+                    "verify/diagnostics still failing after " + verifyFixTextOnlyRetries + " text-only replies");
+        }
+        return verifyFixTextOnlyRetries;
+    }
+
+    public boolean shouldAbortRun() {
+        return abortRun;
+    }
+
+    public RunStatus abortStatus() {
+        return abortStatus;
+    }
+
+    public String abortMessage() {
+        return abortMessage;
+    }
+
+    private String abortMessage = "";
+
+    private void abortRun(String code, String message) {
+        abortRun = true;
+        abortStatus = RunStatus.FAILED;
+        abortMessage = message;
+        abortCode = code;
+    }
+
+    private String abortCode = ErrorCodes.TOOL_FAILED;
+
+    public String abortCode() {
+        return abortCode;
     }
 
     private volatile boolean plannerPhaseComplete;

@@ -1,0 +1,6 @@
+{"type":"tool_call","id":"tc1","name":"search_replace","arguments":{"path":"src/main/java/com/example/Add.java","old_string":"NOT_FOUND_1","new_string":"return a + b;"}}
+{"type":"tool_call","id":"tc2","name":"search_replace","arguments":{"path":"src/main/java/com/example/Add.java","old_string":"NOT_FOUND_2","new_string":"return a + b;"}}
+{"type":"tool_call","id":"tc3","name":"search_replace","arguments":{"path":"src/main/java/com/example/Add.java","old_string":"NOT_FOUND_3","new_string":"return a + b;"}}
+{"type":"tool_call","id":"tc4","name":"search_replace","arguments":{"path":"src/main/java/com/example/Add.java","old_string":"NOT_FOUND_4","new_string":"return a + b;"}}
+{"type":"tool_call","id":"tc5","name":"search_replace","arguments":{"path":"src/main/java/com/example/Add.java","old_string":"NOT_FOUND_5","new_string":"return a + b;"}}
+{"type":"message","text":"Should not reach this."}

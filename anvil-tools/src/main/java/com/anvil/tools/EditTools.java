@@ -11,6 +11,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Structured file edits (prefer over full fs.write for existing files). */
 public final class EditTools {
@@ -84,7 +86,9 @@ public final class EditTools {
                         ErrorCodes.TOOL_FAILED,
                         "old_string matches " + count + " times; set replace_all=true or use a unique old_string");
             }
-            String updated = replaceAll ? content.replace(matchText, newString) : content.replaceFirst(matchText, newString);
+            String updated = replaceAll
+                    ? content.replace(matchText, newString)
+                    : literalReplaceFirst(content, matchText, newString);
             Files.writeString(abs, updated);
             int replaced = replaceAll ? count : 1;
             String note = matchText.equals(oldString) ? "" : " (fuzzy match)";
@@ -279,6 +283,11 @@ public final class EditTools {
             idx += needle.length();
         }
         return count;
+    }
+
+    /** Literal single replacement — {@link String#replaceFirst} treats the needle as regex. */
+    private static String literalReplaceFirst(String content, String matchText, String newString) {
+        return content.replaceFirst(Pattern.quote(matchText), Matcher.quoteReplacement(newString));
     }
 
     private record Hunk(int oldStart) {}

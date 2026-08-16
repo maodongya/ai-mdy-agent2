@@ -63,6 +63,21 @@ class OpenAiModelProviderTest {
     }
 
     @Test
+    void parseReasoningContentStream() throws Exception {
+        String sse = """
+                data: {"choices":[{"delta":{"reasoning_content":"think"}}]}
+
+                data: {"choices":[{"delta":{"reasoning_content":" hard"}}]}
+
+                data: [DONE]
+
+                """;
+        OpenAiModelProvider.StreamAggregate agg =
+                OpenAiModelProvider.parseStream(new java.io.ByteArrayInputStream(sse.getBytes()));
+        assertEquals("think hard", agg.reasoningContent);
+    }
+
+    @Test
     void parseUsageFromStream() throws Exception {
         String sse = """
                 data: {"choices":[{"delta":{"content":"Hi"}}]}

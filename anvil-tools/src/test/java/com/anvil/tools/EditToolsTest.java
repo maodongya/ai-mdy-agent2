@@ -49,6 +49,27 @@ class EditToolsTest {
     }
 
     @Test
+    void searchReplaceTreatsOldStringAsLiteralNotRegex() throws Exception {
+        Files.writeString(
+                workspace.resolve("Doc.java"),
+                """
+                public class Doc {
+                  /** sample javadoc */
+                  void run() {}
+                }
+                """);
+        var r = EditTools.searchReplace(
+                fs,
+                "c4",
+                "Doc.java",
+                "  /** sample javadoc */",
+                "  /** updated javadoc */",
+                false);
+        assertEquals("ok", r.status(), r.content());
+        assertTrue(Files.readString(workspace.resolve("Doc.java")).contains("updated javadoc"));
+    }
+
+    @Test
     void applyMultiFilePatchViaTool(@TempDir Path workspace) throws Exception {
         Files.writeString(workspace.resolve("X.java"), "x\n");
         Files.writeString(workspace.resolve("Y.java"), "y\n");

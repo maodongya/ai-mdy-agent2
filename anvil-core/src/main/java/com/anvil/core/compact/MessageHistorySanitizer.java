@@ -1,8 +1,11 @@
 package com.anvil.core.compact;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Ensures OpenAI/DeepSeek-compatible message sequences: every {@code role=tool} message must follow
@@ -27,6 +30,51 @@ public final class MessageHistorySanitizer {
                 continue;
             }
             out.add(msg);
+        }
+        return dropIncompleteToolTurns(out);
+    }
+
+    /**
+     * Removes assistant {@code tool_calls} turns that do not have a tool response for every call id.
+     * Prevents DeepSeek/OpenAI 400 errors when replaying corrupted thread memory.
+     */
+    public static List<Map<String, Object>> dropIncompleteToolTurns(List<Map<String, Object>> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return List.of();
+        }
+        List<Map<String, Object>> out = new ArrayList<>(messages.size());
+        int i = 0;
+        while (i < messages.size()) {
+            Map<String, Object> msg = messages.get(i);
+            if (isAssistantWithToolCalls(msg)) {
+                Set<String> required = toolCallIds(msg);
+                int j = i + 1;
+                Set<String> answered = new HashSet<>();
+                while (j < messages.size() && isTool(messages.get(j))) {
+                    String id = toolCallId(messages.get(j));
+                    if (id != null) {
+                        answered.add(id);
+                    }
+                    j++;
+                }
+                if (answered.containsAll(required)) {
+                    for (int k = i; k < j; k++) {
+                        out.add(messages.get(k));
+                    }
+                    i = j;
+                    continue;
+                }
+                Map<String, Object> stripped = new LinkedHashMap<>(msg);
+                stripped.remove("tool_calls");
+                String content = String.valueOf(stripped.getOrDefault("content", ""));
+                if (!content.isBlank()) {
+                    out.add(stripped);
+                }
+                i = j;
+                continue;
+            }
+            out.add(msg);
+            i++;
         }
         return List.copyOf(out);
     }
@@ -105,6 +153,24 @@ public final class MessageHistorySanitizer {
             return false;
         }
         return false;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Set<String> toolCallIds(Map<String, Object> assistant) {
+        Object raw = assistant.get("tool_calls");
+        if (!(raw instanceof List<?> list)) {
+            return Set.of();
+        }
+        Set<String> ids = new HashSet<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> tc) {
+                Object id = tc.get("id");
+                if (id != null && !String.valueOf(id).isBlank()) {
+                    ids.add(String.valueOf(id));
+                }
+            }
+        }
+        return ids;
     }
 
     @SuppressWarnings("unchecked")

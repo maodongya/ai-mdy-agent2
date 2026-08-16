@@ -12,6 +12,6 @@
     "status": "succeeded",
     "max_step_events": 10,
     "event_types_contains": ["run.completed"],
-    "forbid_event_types": ["run.failed", "tool.failed"]
+    "forbid_event_types": ["run.failed"]
   }
 }

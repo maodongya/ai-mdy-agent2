@@ -90,7 +90,7 @@ public final class ExploreAgent {
                 ctx.emit("explore.completed", Map.of("files", files.size(), "tool_calls", toolCalls));
                 return new ExploreReport(report, List.copyOf(files), toolCalls);
             }
-            appendAssistantTools(history, turn.toolCalls());
+            appendAssistantTools(history, turn);
             for (ToolCallIntent call : turn.toolCalls()) {
                 if (!READ_TOOLS.contains(call.name())
                         || ToolSideEffects.forTool(call.name()) != SideEffect.READ) {
@@ -161,12 +161,7 @@ public final class ExploreAgent {
         return item;
     }
 
-    private static void appendAssistantTools(List<Map<String, Object>> history, List<ToolCallIntent> calls) {
-        List<Map<String, Object>> toolCalls = new ArrayList<>();
-        for (ToolCallIntent call : calls) {
-            Map<String, Object> fn = Map.of("name", call.name(), "arguments", call.arguments() == null ? Map.of() : call.arguments());
-            toolCalls.add(Map.of("id", call.id(), "type", "function", "function", fn));
-        }
-        history.add(Map.of("role", "assistant", "content", "", "tool_calls", toolCalls));
+    private static void appendAssistantTools(List<Map<String, Object>> history, ModelTurn turn) {
+        history.add(turn.toHistoryMessage());
     }
 }

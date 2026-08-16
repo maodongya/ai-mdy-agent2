@@ -120,6 +120,87 @@ class LoopEngineTest {
     }
 
     @Test
+    void abortsAfterRepeatedWriteToolFailures() throws Exception {
+        Path workspace = repoRoot().resolve("fixtures/repos/sample-lib-buggy");
+        ScriptedModel model = new ScriptedModel(fixture("write-fail-loop.jsonl"));
+
+        LoopResult result = LoopEngine.run(
+                new RunRequest(
+                        "thr_abort",
+                        "run_abort",
+                        Mode.AGENT,
+                        "scripted:write-fail-loop",
+                        "fix file",
+                        workspace,
+                        20,
+                        5_000L,
+                        30_000L),
+                model,
+                (id, preview, timeout) -> CompletableFuture.completedFuture(ApprovalDecision.ALLOW_ONCE),
+                new LoopOptions(
+                        RunProfile.EXTENDED.contextBudget(),
+                        com.anvil.protocol.SandboxTier.WORKSPACE_WRITE,
+                        "main",
+                        com.anvil.core.tools.ToolCatalog.builtinSchemas(Mode.AGENT),
+                        null,
+                        RunProfile.EXTENDED,
+                        true,
+                        false,
+                        VerifyConfig.disabled(),
+                        LoopConfig.disabledParallel()),
+                null);
+
+        assertEquals(RunStatus.FAILED, result.status());
+        List<String> types = eventTypesWithoutDeltas(result);
+        assertTrue(types.contains("run.failed"));
+        assertTrue(types.stream().filter("tool.failed"::equals).count() >= 5);
+    }
+
+    @Test
+    void patchBugfixSucceedsWhenVerifyEnabledWithoutMavenProject() throws Exception {
+        Path workspace = Files.createTempDirectory("anvil-patch-no-pom");
+        try {
+            Path source = repoRoot().resolve("fixtures/repos/sample-lib-buggy");
+            copyDirectory(source, workspace);
+            ScriptedModel model = new ScriptedModel(fixture("patch-add.jsonl"));
+
+            LoopResult result = LoopEngine.run(
+                    new RunRequest(
+                            "thr_patch",
+                            "run_patch",
+                            Mode.AGENT,
+                            "scripted:patch-add",
+                            "fix add",
+                            workspace,
+                            12,
+                            5_000L,
+                            30_000L),
+                    model,
+                (id, preview, timeout) -> CompletableFuture.completedFuture(ApprovalDecision.ALLOW_ONCE),
+                    new LoopOptions(
+                            RunProfile.EXTENDED.contextBudget(),
+                            com.anvil.protocol.SandboxTier.WORKSPACE_WRITE,
+                            "main",
+                            com.anvil.core.tools.ToolCatalog.builtinSchemas(Mode.AGENT),
+                            null,
+                            RunProfile.EXTENDED,
+                            true,
+                            false,
+                            VerifyConfig.defaults(),
+                            LoopConfig.disabledParallel()),
+                    null);
+
+            assertEquals(RunStatus.SUCCEEDED, result.status());
+            assertTrue(Files.readString(workspace.resolve("src/main/java/com/example/Add.java")).contains("return a + b"));
+            List<String> types = eventTypesWithoutDeltas(result);
+            assertTrue(types.contains("run.completed"));
+            assertTrue(types.stream().noneMatch("diagnostics.auto.failed"::equals));
+        } finally {
+            deleteRecursively(workspace);
+        }
+    }
+
+    @Test
     void planModeUpdatesPlanFile() throws Exception {
         Path workspace = Files.createTempDirectory("anvil-plan");
         try {
@@ -179,6 +260,20 @@ class LoopEngineTest {
                     // best effort cleanup
                 }
             });
+        }
+    }
+
+    private static void copyDirectory(Path source, Path target) throws Exception {
+        try (var walk = Files.walk(source)) {
+            for (Path path : walk.toList()) {
+                Path dest = target.resolve(source.relativize(path));
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(dest);
+                } else {
+                    Files.createDirectories(dest.getParent());
+                    Files.copy(path, dest);
+                }
+            }
         }
     }
 }

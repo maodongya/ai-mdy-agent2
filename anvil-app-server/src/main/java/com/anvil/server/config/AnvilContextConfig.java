@@ -46,7 +46,7 @@ public final class AnvilContextConfig {
             @Value("${anvil.model.routing.enabled:true}") boolean modelRoutingEnabled,
             @Value("${anvil.model.routing.explore:deepseek:deepseek-chat}") String exploreModel,
             @Value("${anvil.model.routing.edit:deepseek:deepseek-chat}") String editModel,
-            @Value("${anvil.model.routing.plan:deepseek:deepseek-reasoner}") String planModel) {
+            @Value("${anvil.model.routing.plan:deepseek:deepseek-chat}") String planModel) {
         this.compactThresholdTokens = compactThresholdTokens;
         this.contextTargetTokens = contextTargetTokens;
         this.contextKeepRecent = contextKeepRecent;

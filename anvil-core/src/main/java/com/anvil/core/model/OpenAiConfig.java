@@ -41,6 +41,11 @@ public record OpenAiConfig(String baseUrl, String apiKey, String model, Duration
         return baseUrl != null && baseUrl.contains("deepseek");
     }
 
+    /** OpenAI-only streaming usage chunk; DeepSeek rejects unknown fields on some deployments. */
+    public boolean supportsStreamUsageOption() {
+        return baseUrl != null && baseUrl.contains("openai");
+    }
+
     public String providerLabel() {
         if (baseUrl.contains("deepseek")) {
             return "DeepSeek";

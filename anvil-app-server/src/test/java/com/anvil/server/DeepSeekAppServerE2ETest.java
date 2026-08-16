@@ -43,7 +43,20 @@ class DeepSeekAppServerE2ETest {
                 "Read src/main/java/com/example/Add.java with fs.read and reply with the public class name only.");
 
         waitForTerminal(run.runId(), 120_000);
-        assertEquals(RunStatus.SUCCEEDED, runService.liveStatus(run.runId()));
+        RunStatus status = runService.liveStatus(run.runId());
+        if (status != RunStatus.SUCCEEDED) {
+            String detail = store.eventStore().allForRun(run.runId()).stream()
+                    .filter(e -> "run.failed".equals(e.type()))
+                    .map(e -> String.valueOf(e.payload()))
+                    .findFirst()
+                    .orElse("");
+            String types = store.eventStore().allForRun(run.runId()).stream()
+                    .map(e -> e.type())
+                    .toList()
+                    .toString();
+            assertEquals(RunStatus.SUCCEEDED, status, detail + " events=" + types);
+        }
+        assertEquals(RunStatus.SUCCEEDED, status);
 
         var types = store.eventStore().allForRun(run.runId()).stream()
                 .map(e -> e.type())

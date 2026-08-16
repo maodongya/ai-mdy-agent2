@@ -5,6 +5,7 @@ import com.anvil.core.compact.ContextCompactor;
 import com.anvil.protocol.ToolResult;
 import com.anvil.tools.DiagnosticsTool;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -27,6 +28,9 @@ final class DiagnosticsPass {
             ContextBudget budget,
             long shellTimeoutMs) {
         if (config == null || !config.autoCompileAfterWrite() || !isWriteTool(toolName)) {
+            return;
+        }
+        if (!Files.exists(workspaceRoot.resolve("pom.xml"))) {
             return;
         }
         String path = args == null ? null : stringArg(args, "path");

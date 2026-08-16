@@ -19,6 +19,8 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
+import javafx.stage.Modality;
+import javafx.stage.Window;
 import javafx.util.Duration;
 
 import java.io.File;
@@ -286,6 +288,7 @@ public final class WorkbenchView {
 
     public void shutdown() {
         closed = true;
+        dismissApprovalDialog(false);
         finishRunDebounce.stop();
         eventPump.stop();
         interruptSse();
@@ -1169,6 +1172,7 @@ public final class WorkbenchView {
         }
         String runId = currentRunId;
         appendConsole(ConsoleLine.Kind.SYSTEM, "cancelling " + runId);
+        dismissApprovalDialog(false);
         interruptSse();
         submitBg(() -> {
             try {
@@ -1180,6 +1184,7 @@ public final class WorkbenchView {
     }
 
     private volatile boolean approvalDialogShowing;
+    private volatile Alert currentApprovalAlert;
     private final ConcurrentLinkedQueue<Map<String, Object>> pendingApprovals = new ConcurrentLinkedQueue<>();
 
     private void setRunning(boolean active) {
@@ -1511,7 +1516,16 @@ public final class WorkbenchView {
 
     private void showApproval(Map<String, Object> payload) {
         pendingApprovals.offer(payload);
-        drainApprovalQueue();
+        scheduleDrainApprovalQueue();
+    }
+
+    /** Never open dialogs from AnimationTimer pulses — defer to the next FX pulse. */
+    private void scheduleDrainApprovalQueue() {
+        if (Platform.isFxApplicationThread()) {
+            Platform.runLater(this::drainApprovalQueue);
+        } else {
+            ui(this::drainApprovalQueue);
+        }
     }
 
     private void drainApprovalQueue() {
@@ -1522,12 +1536,22 @@ public final class WorkbenchView {
         if (payload == null) {
             return;
         }
+        openApprovalDialog(payload);
+    }
+
+    private void openApprovalDialog(Map<String, Object> payload) {
         String id = str(payload.get("approval_id"), "");
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
         alert.setTitle("Approval · Window #" + windowId);
         alert.setHeaderText(str(payload.get("tool"), "tool") + "  ·  risk: " + str(payload.get("risk"), "?"));
         alert.setContentText(formatApprovalPreview(payload));
         alert.getDialogPane().getStylesheets().add(WorkbenchWindow.class.getResource("/anvil.css").toExternalForm());
+
+        Window owner = root.getScene() != null ? root.getScene().getWindow() : null;
+        if (owner != null) {
+            alert.initOwner(owner);
+            alert.initModality(Modality.WINDOW_MODAL);
+        }
 
         ButtonType allowOnce = new ButtonType("Allow Once", ButtonBar.ButtonData.OK_DONE);
         ButtonType allowSession = new ButtonType("Allow Session");
@@ -1536,8 +1560,17 @@ public final class WorkbenchView {
         alert.getButtonTypes().setAll(deny, alwaysDeny, allowSession, allowOnce);
 
         approvalDialogShowing = true;
-        alert.setOnHidden(ev -> {
+        final boolean[] submitted = {false};
+        Runnable releaseAndDrain = () -> {
+            currentApprovalAlert = null;
             approvalDialogShowing = false;
+            scheduleDrainApprovalQueue();
+        };
+        Runnable submitDecision = () -> {
+            if (submitted[0]) {
+                return;
+            }
+            submitted[0] = true;
             ButtonType choice = alert.getResult();
             String decision =
                     choice == null
@@ -1551,19 +1584,49 @@ public final class WorkbenchView {
             submitBg(() -> {
                 try {
                     client.respondApproval(id, decision);
-                    ui(() -> {
-                        appendConsole(ConsoleLine.Kind.APPROVAL, id + " → " + decision);
-                        drainApprovalQueue();
-                    });
+                    ui(() -> appendConsole(ConsoleLine.Kind.APPROVAL, id + " → " + decision));
                 } catch (Exception e) {
-                    ui(() -> {
-                        appendConsole(ConsoleLine.Kind.ERROR, e.getMessage());
-                        drainApprovalQueue();
-                    });
+                    ui(() -> appendConsole(ConsoleLine.Kind.ERROR, e.getMessage()));
+                } finally {
+                    ui(releaseAndDrain);
                 }
             });
+        };
+        alert.setOnCloseRequest(ev -> {
+            if (!submitted[0]) {
+                alert.setResult(deny);
+            }
         });
-        alert.show();
+        alert.setOnHidden(ev -> submitDecision.run());
+
+        try {
+            currentApprovalAlert = alert;
+            alert.show();
+        } catch (RuntimeException e) {
+            currentApprovalAlert = null;
+            approvalDialogShowing = false;
+            pendingApprovals.offer(payload);
+            appendConsole(ConsoleLine.Kind.ERROR, "approval dialog failed: " + e.getMessage());
+            e.printStackTrace(System.err);
+            scheduleDrainApprovalQueue();
+        }
+    }
+
+    private void dismissApprovalDialog(boolean drainQueued) {
+        pendingApprovals.clear();
+        Alert alert = currentApprovalAlert;
+        currentApprovalAlert = null;
+        approvalDialogShowing = false;
+        if (alert != null) {
+            try {
+                alert.close();
+            } catch (RuntimeException ignored) {
+                // Dialog may already be closed.
+            }
+        }
+        if (drainQueued) {
+            scheduleDrainApprovalQueue();
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -1604,6 +1667,7 @@ public final class WorkbenchView {
         if (closed) {
             return;
         }
+        dismissApprovalDialog(false);
         eventPump.stop();
         runDetailPanel.flushPendingRows();
         setRunning(false);

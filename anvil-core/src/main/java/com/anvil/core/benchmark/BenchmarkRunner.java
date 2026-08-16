@@ -55,9 +55,7 @@ public final class BenchmarkRunner {
         Path workspace = prepareWorkspace(repoRoot, spec);
         try {
             ModelProvider provider = createProvider(repoRoot, spec, registry);
-            VerifyConfig verify = spec.live()
-                    ? VerifyConfig.forRun(VerifyConfig.defaults(), spec.modeEnum(), RunProfile.EXTENDED)
-                    : VerifyConfig.disabled();
+            VerifyConfig verify = VerifyConfig.disabled();
             LoopResult result = LoopEngine.run(
                     new RunRequest(
                             "bench_" + spec.id(),

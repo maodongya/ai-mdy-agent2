@@ -62,6 +62,27 @@ class MessageHistorySanitizerTest {
     }
 
     @Test
+    void dropsAssistantToolCallsWithoutAllToolResponses() {
+        Map<String, Object> assistant = new LinkedHashMap<>();
+        assistant.put("role", "assistant");
+        assistant.put("content", "");
+        assistant.put(
+                "tool_calls",
+                List.of(
+                        Map.of("id", "call_1", "type", "function", "function", Map.of("name", "fs.read", "arguments", "{}")),
+                        Map.of("id", "call_2", "type", "function", "function", Map.of("name", "grep", "arguments", "{}"))));
+
+        List<Map<String, Object>> messages = List.of(
+                assistant,
+                Map.of("role", "tool", "tool_call_id", "call_1", "content", "only one"),
+                Map.of("role", "user", "content", "next"));
+
+        List<Map<String, Object>> sanitized = MessageHistorySanitizer.sanitize(messages);
+        assertEquals(1, sanitized.size());
+        assertEquals("user", sanitized.get(0).get("role"));
+    }
+
+    @Test
     void compactionDoesNotLeaveOrphanTool() {
         Map<String, Object> assistant = new LinkedHashMap<>();
         assistant.put("role", "assistant");

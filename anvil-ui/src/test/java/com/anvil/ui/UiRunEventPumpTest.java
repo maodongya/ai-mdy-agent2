@@ -53,6 +53,19 @@ class UiRunEventPumpTest {
         assertTrue(listener.frameEnds > 0);
     }
 
+    @Test
+    void defersModalApprovalEventsToNextFxPulse() throws Exception {
+        RecordingListener listener = new RecordingListener();
+        UiRunEventPump pump = new UiRunEventPump(listener);
+        runOnFxAndWait(() -> {
+            pump.start();
+            pump.submit(event("approval.required", 1));
+            pump.stop();
+        });
+        runOnFxAndWait(() -> {});
+        assertEquals(List.of("approval.required"), listener.types);
+    }
+
     private static void runOnFxAndWait(Runnable action) throws InterruptedException {
         CountDownLatch done = new CountDownLatch(1);
         Platform.runLater(() -> {

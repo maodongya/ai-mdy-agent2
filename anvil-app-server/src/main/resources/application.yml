@@ -45,7 +45,7 @@ anvil:
       enabled: true
       explore: deepseek:deepseek-chat
       edit: deepseek:deepseek-chat
-      plan: deepseek:deepseek-reasoner
+      plan: deepseek:deepseek-chat
   editor:
     diagnostics-on-save: true
   deepseek:
