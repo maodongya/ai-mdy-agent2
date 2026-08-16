@@ -6,6 +6,7 @@ import com.anvil.tools.index.MavenModuleGraph;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 public record RunRequest(
         String threadId,
@@ -48,14 +49,23 @@ public record RunRequest(
     }
 
     public static String formatEditorContext(List<String> openFiles, String focusFile) {
-        return formatEditorContext(openFiles, focusFile, null);
+        return formatEditorContext(openFiles, focusFile, null, Map.of());
     }
 
     public static String formatEditorContext(List<String> openFiles, String focusFile, EditorSelection selection) {
+        return formatEditorContext(openFiles, focusFile, selection, Map.of());
+    }
+
+    public static String formatEditorContext(
+            List<String> openFiles,
+            String focusFile,
+            EditorSelection selection,
+            Map<String, String> unsavedBuffers) {
         boolean hasFocus = focusFile != null && !focusFile.isBlank();
         boolean hasOpen = openFiles != null && !openFiles.isEmpty();
         boolean hasSelection = selection != null && !selection.isEmpty();
-        if (!hasFocus && !hasOpen && !hasSelection) {
+        boolean hasBuffers = unsavedBuffers != null && !unsavedBuffers.isEmpty();
+        if (!hasFocus && !hasOpen && !hasSelection && !hasBuffers) {
             return "";
         }
         StringBuilder sb = new StringBuilder("<editor_context>\n");
@@ -79,19 +89,48 @@ public record RunRequest(
                     .append('\n');
             sb.append("```\n").append(selection.text()).append("\n```\n");
         }
+        if (hasBuffers) {
+            sb.append("unsaved_buffers:\n");
+            for (Map.Entry<String, String> e : unsavedBuffers.entrySet()) {
+                if (e.getKey() == null || e.getKey().isBlank()) {
+                    continue;
+                }
+                String content = e.getValue() == null ? "" : e.getValue();
+                sb.append("- path: ").append(e.getKey().trim()).append('\n');
+                sb.append("```\n").append(truncateBuffer(content)).append("\n```\n");
+            }
+        }
         sb.append("</editor_context>");
         return sb.toString();
     }
 
-    /** Editor + Maven module graph + @ references for harness context (Phase 6). */
+    /** Backward-compatible harness context without unsaved buffers. */
     public static String formatHarnessContext(
             Path workspace,
             String userMessage,
             List<String> openFiles,
             String focusFile,
             EditorSelection selection) {
+        return formatHarnessContext(workspace, userMessage, openFiles, focusFile, selection, Map.of());
+    }
+
+    private static String truncateBuffer(String content) {
+        if (content.length() <= 8000) {
+            return content;
+        }
+        return content.substring(0, 8000) + "\n...[truncated unsaved buffer]";
+    }
+
+    /** Editor + Maven module graph + @ references + unsaved buffers (Phase 6/9). */
+    public static String formatHarnessContext(
+            Path workspace,
+            String userMessage,
+            List<String> openFiles,
+            String focusFile,
+            EditorSelection selection,
+            Map<String, String> unsavedBuffers) {
         StringBuilder sb = new StringBuilder();
-        String editor = formatEditorContext(openFiles, focusFile, selection);
+        String editor = formatEditorContext(openFiles, focusFile, selection, unsavedBuffers);
         if (!editor.isBlank()) {
             sb.append(editor);
         }

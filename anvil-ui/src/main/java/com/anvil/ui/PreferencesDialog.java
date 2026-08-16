@@ -26,6 +26,9 @@ final class PreferencesDialog {
         yoloWrites.setSelected(settings.autoApproveWrites());
         yoloWrites.setTooltip(new Tooltip("Skip approval dialogs for fs.write in Agent mode"));
 
+        CheckBox diagOnSave = new CheckBox("Compile diagnostics on save");
+        diagOnSave.setSelected(settings.diagnosticsOnSave());
+
         GridPane grid = new GridPane();
         grid.setHgap(10);
         grid.setVgap(10);
@@ -37,6 +40,7 @@ final class PreferencesDialog {
         grid.add(new Label("Default model"), 0, 2);
         grid.add(model, 1, 2);
         grid.add(yoloWrites, 1, 3);
+        grid.add(diagOnSave, 1, 4);
 
         dialog.getDialogPane().setContent(grid);
         dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
@@ -49,6 +53,7 @@ final class PreferencesDialog {
         settings.setWorkspacePath(workspace.getText().trim());
         settings.setDefaultModel(model.getEditor().getText().trim());
         settings.setAutoApproveWrites(yoloWrites.isSelected());
+        settings.setDiagnosticsOnSave(diagOnSave.isSelected());
         settings.save();
         return true;
     }

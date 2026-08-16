@@ -31,6 +31,9 @@ public record LlmRegistry(OpenAiConfig openAi, OpenAiConfig deepSeek) {
             String model = modelId.substring("openai:".length());
             return openAi.withModel(model);
         }
+        if (modelId != null && modelId.startsWith("deepseek-")) {
+            return deepSeek.withModel(modelId);
+        }
         return openAi.withModel(modelId);
     }
 }

@@ -6,6 +6,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,6 +30,17 @@ class RunRequestTest {
                 List.of("Foo.java"), "Foo.java", new EditorSelection(10, 12, "selected code"));
         assertTrue(block.contains("selection: lines 10-12"));
         assertTrue(block.contains("selected code"));
+    }
+
+    @Test
+    void formatsUnsavedBuffers() {
+        String block = RunRequest.formatEditorContext(
+                List.of("Foo.java"),
+                "Foo.java",
+                null,
+                Map.of("Foo.java", "unsaved content"));
+        assertTrue(block.contains("unsaved_buffers"));
+        assertTrue(block.contains("unsaved content"));
     }
 
     @Test

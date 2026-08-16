@@ -1,0 +1,7 @@
+{
+  "benchmarks": [
+    "patch-add-live",
+    "grep-hello-live",
+    "read-add-live"
+  ]
+}

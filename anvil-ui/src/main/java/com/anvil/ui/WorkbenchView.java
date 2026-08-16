@@ -57,6 +57,7 @@ public final class WorkbenchView {
     private final TabPane editorTabs = new TabPane();
     private final Label editorEmptyHint = new Label("Select a file from Explorer");
     private final EditorFindBar findBar = new EditorFindBar();
+    private final ProblemsPanel problemsPanel = new ProblemsPanel();
     private final ConsolePanel consolePanel = new ConsolePanel();
     private final RunDetailPanel runDetailPanel = new RunDetailPanel();
     private final DiffReviewPanel diffReviewPanel = new DiffReviewPanel();
@@ -112,8 +113,10 @@ public final class WorkbenchView {
     private final Map<String, CodeEditorPane> openEditors = new LinkedHashMap<>();
     /** 已打开的文件标签页：path → Tab 节点 */
     private final Map<String, Tab> openTabs = new HashMap<>();
-    /** 已修改但未 Accept 的文件路径 */
+    /** Agent 修改待 Accept 的文件路径 */
     private final Set<String> modifiedFilePaths = new HashSet<>();
+    /** 用户编辑未保存的文件路径 (Phase 9.1) */
+    private final Set<String> dirtyEditorPaths = new HashSet<>();
 
     private final ExecutorService bg;
     private final PauseTransition filterDebounce = new PauseTransition(Duration.millis(300));
@@ -161,6 +164,9 @@ public final class WorkbenchView {
 
     public void registerShortcuts(Scene scene) {
         scene.getAccelerators().put(KeyCombination.keyCombination("Shortcut+F"), this::showFindBar);
+        scene.getAccelerators().put(KeyCombination.keyCombination("Shortcut+S"), this::saveCurrentFile);
+        scene.getAccelerators().put(KeyCombination.keyCombination("F12"), this::goToDefinition);
+        scene.getAccelerators().put(KeyCombination.keyCombination("Shift+F12"), this::findReferences);
         scene.getAccelerators().put(KeyCombination.keyCombination("Escape"), findBar::hide);
         scene.getAccelerators().put(KeyCombination.keyCombination("Ctrl+BACK_QUOTE"), this::toggleTerminal);
         scene.getAccelerators().put(KeyCombination.keyCombination("Ctrl+Shift+5"), this::focusTerminalInput);
@@ -477,11 +483,13 @@ public final class WorkbenchView {
         diffReviewPanel.setOnAccept(this::acceptEdit);
         diffReviewPanel.setOnReject(this::revertEdit);
         diffReviewPanel.setOnQueueEmpty(this::onDiffQueueEmpty);
+        diffReviewPanel.setOnHunkDecision(this::applyHunkDecision);
 
-        VBox codePane = new VBox(8, editorTitle, findBar, editorStack);
+        VBox codePane = new VBox(8, editorTitle, findBar, editorStack, problemsPanel);
         VBox.setVgrow(editorStack, Priority.ALWAYS);
         codePane.getStyleClass().add("panel");
         codePane.setPadding(new Insets(10));
+        problemsPanel.setOnOpen(row -> openFile(row.path()));
 
         VBox diffPane = new VBox(8, diffReviewPanel);
         VBox.setVgrow(diffReviewPanel, Priority.ALWAYS);
@@ -596,6 +604,79 @@ public final class WorkbenchView {
             }
             e.consume();
         }
+    }
+
+    public void saveCurrentFile() {
+        Tab selected = editorTabs.getSelectionModel().getSelectedItem();
+        if (selected == null || !(selected.getUserData() instanceof String path)) {
+            return;
+        }
+        CodeEditorPane editor = openEditors.get(path);
+        if (editor == null || !editor.isDirty()) {
+            return;
+        }
+        saveFile(path, editor.content(), true);
+    }
+
+    public void goToDefinition() {
+        navigateSymbol(true);
+    }
+
+    public void findReferences() {
+        navigateSymbol(false);
+    }
+
+    private void navigateSymbol(boolean definition) {
+        if (client == null || threadId == null) {
+            return;
+        }
+        Tab selected = editorTabs.getSelectionModel().getSelectedItem();
+        if (selected == null || !(selected.getUserData() instanceof String path)) {
+            return;
+        }
+        CodeEditorPane editor = openEditors.get(path);
+        if (editor == null || !path.endsWith(".java")) {
+            setStatus("Go to definition requires a Java file");
+            return;
+        }
+        int line = editor.cursorLine();
+        int column = editor.cursorColumn();
+        submitBg(() -> {
+            try {
+                if (definition) {
+                    Map<String, Object> loc = client.lspDefinition(threadId, path, line, column);
+                    String target = String.valueOf(loc.getOrDefault("path", ""));
+                    int targetLine = intPayload(loc.get("line"), 1);
+                    ui(() -> {
+                        if (!target.isBlank()) {
+                            openFile(target);
+                            appendConsole(ConsoleLine.Kind.SYSTEM, "definition → " + target + ":" + targetLine);
+                        } else {
+                            setStatus("No definition found");
+                        }
+                    });
+                } else {
+                    List<Map<String, Object>> refs = client.lspReferences(threadId, path, line, column);
+                    ui(() -> {
+                        appendConsole(ConsoleLine.Kind.SYSTEM, refs.size() + " references");
+                        for (Map<String, Object> ref : refs.stream().limit(8).toList()) {
+                            appendConsole(
+                                    ConsoleLine.Kind.SYSTEM,
+                                    "  · "
+                                            + ref.get("path")
+                                            + ":"
+                                            + ref.get("line"));
+                        }
+                        if (!refs.isEmpty()) {
+                            Map<String, Object> first = refs.getFirst();
+                            openFile(String.valueOf(first.get("path")));
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                ui(() -> appendConsole(ConsoleLine.Kind.ERROR, e.getMessage()));
+            }
+        });
     }
 
     public void showFindBar() {
@@ -877,6 +958,7 @@ public final class WorkbenchView {
             openTabs.remove(path);
             CodeEditorPane editor = new CodeEditorPane();
             editor.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+            editor.setOnDirtyChange(dirty -> ui(() -> markEditorDirty(path, dirty)));
             Tab tab = new Tab(tabLabel(path), editor);
             tab.setUserData(path);
             tab.setClosable(true);
@@ -910,6 +992,10 @@ public final class WorkbenchView {
     }
 
     private void loadFileAsync(String path) {
+        loadFileAsync(path, false);
+    }
+
+    private void loadFileAsync(String path, boolean force) {
         submitBg(() -> {
             try {
                 Map<String, Object> file = client.workspaceFile(threadId, path);
@@ -920,7 +1006,7 @@ public final class WorkbenchView {
                     if (editor == null) {
                         return;
                     }
-                    editor.setContent(content);
+                    editor.setContent(content, force);
                     editor.resetFind();
                     setStatus(Path.of(path).getFileName() + " · " + lineCount + " lines");
                     if (currentEditor() == editor) {
@@ -931,6 +1017,60 @@ public final class WorkbenchView {
                 ui(() -> appendConsole(ConsoleLine.Kind.ERROR, e.getMessage()));
             }
         });
+    }
+
+    private void saveFile(String path, String content, boolean runDiagnostics) {
+        if (client == null || threadId == null) {
+            appendConsole(ConsoleLine.Kind.ERROR, "not connected");
+            return;
+        }
+        submitBg(() -> {
+            try {
+                client.saveWorkspaceFile(threadId, path, content);
+                ui(() -> {
+                    CodeEditorPane editor = openEditors.get(path);
+                    if (editor != null) {
+                        editor.markSaved();
+                    }
+                    markEditorDirty(path, false);
+                    appendConsole(ConsoleLine.Kind.SYSTEM, "saved " + path);
+                    refreshTreeAsync();
+                });
+                if (runDiagnostics && settings.diagnosticsOnSave()) {
+                    List<Map<String, Object>> diags = client.compileDiagnostics(threadId, path);
+                    ui(() -> {
+                        problemsPanel.setProblems(ProblemsPanel.fromPayload(diags));
+                        if (!diags.isEmpty()) {
+                            appendConsole(ConsoleLine.Kind.ERROR, diags.size() + " problem(s) after save");
+                        }
+                    });
+                }
+            } catch (Exception e) {
+                ui(() -> appendConsole(ConsoleLine.Kind.ERROR, "save failed: " + e.getMessage()));
+            }
+        });
+    }
+
+    private Map<String, String> collectUnsavedBuffers() {
+        Map<String, String> buffers = new LinkedHashMap<>();
+        for (Map.Entry<String, CodeEditorPane> e : openEditors.entrySet()) {
+            if (e.getValue().isDirty()) {
+                buffers.put(e.getKey(), e.getValue().content());
+            }
+        }
+        return buffers;
+    }
+
+    private void markEditorDirty(String path, boolean dirty) {
+        if (dirty) {
+            dirtyEditorPaths.add(path);
+        } else {
+            dirtyEditorPaths.remove(path);
+        }
+        Tab tab = openTabs.get(path);
+        if (tab != null) {
+            tab.setText(tabLabel(path));
+        }
     }
 
     private static String fileName(String path) {
@@ -986,6 +1126,7 @@ public final class WorkbenchView {
                         }
                     }
                 }
+                Map<String, String> editorBuffers = collectUnsavedBuffers();
                 Map<String, Object> run = client.startRun(
                         threadId,
                         modeBox.getValue(),
@@ -997,7 +1138,8 @@ public final class WorkbenchView {
                         selStart,
                         selEnd,
                         selText,
-                        autoApproveWritesCheck.isSelected());
+                        autoApproveWritesCheck.isSelected(),
+                        editorBuffers);
                 currentRunId = String.valueOf(run.get("run_id"));
                 ui(() -> {
                     appendConsole(ConsoleLine.Kind.SYSTEM, "run " + currentRunId + " [" + run.get("status") + "]");
@@ -1174,7 +1316,7 @@ public final class WorkbenchView {
                     ui(() -> {
                         diffReviewPanel.showDiffText(path, String.valueOf(diffText));
                         updateDiffTabTitle();
-                        loadFileAsync(path);
+                        loadFileAsync(path, true);
                     });
                     return;
                 }
@@ -1184,7 +1326,7 @@ public final class WorkbenchView {
             ui(() -> {
                 diffReviewPanel.show(edit, rows);
                 updateDiffTabTitle();
-                loadFileAsync(path);
+                loadFileAsync(path, true);
             });
         });
     }
@@ -1226,6 +1368,42 @@ public final class WorkbenchView {
         refreshTreeAsync();
     }
 
+    private void applyHunkDecision(DiffReviewPanel.HunkDecisionEvent event) {
+        if (event == null || event.path() == null) {
+            return;
+        }
+        DiffReviewPanel.PendingEdit edit = diffReviewPanel.pendingEditFor(event.path());
+        if (edit == null) {
+            return;
+        }
+        var hunks = diffReviewPanel.hunksFor(event.path());
+        var rows = diffReviewPanel.rowsFor(event.path());
+        String content = DiffEngine.rebuild(edit.previousContent(), edit.newContent(), rows, hunks);
+        String workspace = workspaceField.getText().trim();
+        if (workspace.isBlank()) {
+            return;
+        }
+        submitBg(() -> {
+            try {
+                Path file = Path.of(workspace).resolve(event.path()).normalize();
+                Files.writeString(file, content);
+                ui(() -> {
+                    appendConsole(
+                            ConsoleLine.Kind.SYSTEM,
+                            "hunk " + (event.hunkIndex() + 1) + " "
+                                    + event.decision().name().toLowerCase()
+                                    + " · "
+                                    + event.path());
+                    if (isFileOpen(event.path())) {
+                        loadFileAsync(event.path(), true);
+                    }
+                });
+            } catch (Exception e) {
+                ui(() -> appendConsole(ConsoleLine.Kind.ERROR, "hunk apply failed: " + e.getMessage()));
+            }
+        });
+    }
+
     private void acceptEdit(DiffReviewPanel.PendingEdit edit) {
         if (edit == null) {
             return;
@@ -1246,6 +1424,7 @@ public final class WorkbenchView {
         if (!isFileOpen(path)) {
             CodeEditorPane editor = new CodeEditorPane();
             editor.setMaxSize(Double.MAX_VALUE, Double.MAX_VALUE);
+            editor.setOnDirtyChange(dirty -> ui(() -> markEditorDirty(path, dirty)));
             Tab tab = new Tab(tabLabel(path), editor);
             tab.setUserData(path);
             tab.setClosable(true);
@@ -1271,7 +1450,29 @@ public final class WorkbenchView {
 
     private String tabLabel(String path) {
         String name = fileName(path);
-        return modifiedFilePaths.contains(path) ? name + " ●" : name;
+        boolean agentPending = modifiedFilePaths.contains(path);
+        boolean dirty = dirtyEditorPaths.contains(path);
+        if (dirty && agentPending) {
+            return name + " ●*";
+        }
+        if (dirty) {
+            return name + " ●";
+        }
+        if (agentPending) {
+            return name + " *";
+        }
+        return name;
+    }
+
+    private static int intPayload(Object value, int fallback) {
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return value == null ? fallback : Integer.parseInt(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
     }
 
     private void revertEdit(DiffReviewPanel.PendingEdit edit) {
@@ -1298,7 +1499,7 @@ public final class WorkbenchView {
                         }
                     }
                     if (isFileOpen(edit.path())) {
-                        loadFileAsync(edit.path());
+                        loadFileAsync(edit.path(), true);
                     }
                     refreshTreeAsync();
                 });

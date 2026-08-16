@@ -89,14 +89,32 @@ public final class FsTools {
     public ToolResult write(String toolCallId, String path, String content) {
         try {
             Path abs = PathGuard.assertInsideWorkspace(workspaceRoot, path);
+            String body = content == null ? "" : content;
+            int lineCount = countLines(body);
+            if (lineCount > EditTools.maxWriteLinesHint()) {
+                return error(
+                        toolCallId,
+                        "fs.write",
+                        ErrorCodes.TOOL_ARG_INVALID,
+                        "refusing fs.write: " + lineCount + " lines exceeds limit of "
+                                + EditTools.maxWriteLinesHint()
+                                + ". Use search_replace or apply_patch for large edits.");
+            }
             Files.createDirectories(abs.getParent() != null ? abs.getParent() : workspaceRoot);
-            Files.writeString(abs, content == null ? "" : content);
-            return ToolResult.ok(toolCallId, "fs.write", "wrote " + path + " (" + (content == null ? 0 : content.length()) + " chars)");
+            Files.writeString(abs, body);
+            return ToolResult.ok(toolCallId, "fs.write", "wrote " + path + " (" + body.length() + " chars)");
         } catch (PathEscapeException e) {
             return denied(toolCallId, "fs.write", e.getMessage());
         } catch (IOException e) {
             return error(toolCallId, "fs.write", ErrorCodes.TOOL_FAILED, e.getMessage());
         }
+    }
+
+    private static int countLines(String text) {
+        if (text == null || text.isEmpty()) {
+            return 0;
+        }
+        return text.split("\n", -1).length;
     }
 
     public ToolResult glob(String toolCallId, String pattern) {

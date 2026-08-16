@@ -2,28 +2,55 @@ package com.anvil.server.config;
 
 import com.anvil.core.compact.ContextBudget;
 import com.anvil.core.loop.RunProfile;
+import com.anvil.protocol.Mode;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AnvilContextConfigTest {
 
+    private static AnvilContextConfig config(
+            boolean autoAfterWrite, boolean autoCompile, String template, long timeoutMs) {
+        return new AnvilContextConfig(
+                120_000,
+                80_000,
+                12,
+                8_000,
+                40,
+                autoAfterWrite,
+                autoCompile,
+                template,
+                timeoutMs,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                6,
+                true,
+                "deepseek:deepseek-chat",
+                "deepseek:deepseek-chat",
+                "deepseek:deepseek-reasoner");
+    }
+
     @Test
     void budgetForProfileUsesHigherLimits() {
-        AnvilContextConfig config = new AnvilContextConfig(200_000, 130_000, 32, 20_000, 50, true, "", 180_000L, true, true);
-        ContextBudget budget = config.budgetForProfile(RunProfile.STANDARD);
+        AnvilContextConfig cfg = config(true, true, "", 180_000L);
+        ContextBudget budget = cfg.budgetForProfile(RunProfile.STANDARD);
 
-        assertEquals(200_000, budget.compactThresholdTokens());
-        assertEquals(130_000, budget.targetTokensAfterCompact());
-        assertEquals(32, budget.keepRecentMessages());
-        assertEquals(20_000, budget.maxToolContentChars());
+        assertEquals(120_000, budget.compactThresholdTokens());
+        assertEquals(80_000, budget.targetTokensAfterCompact());
+        assertEquals(12, budget.keepRecentMessages());
+        assertEquals(8_000, budget.maxToolContentChars());
     }
 
     @Test
     void complexProfileWinsWhenHigherThanConfig() {
-        AnvilContextConfig config = new AnvilContextConfig(120_000, 80_000, 12, 8_000, 40, false, "mvn test -pl {module}", 60_000L, false, false);
-        ContextBudget budget = config.budgetForProfile(RunProfile.COMPLEX);
+        AnvilContextConfig cfg = config(false, false, "mvn test -pl {module}", 60_000L);
+        ContextBudget budget = cfg.budgetForProfile(RunProfile.COMPLEX);
 
         assertTrue(budget.compactThresholdTokens() >= RunProfile.COMPLEX.contextBudget().compactThresholdTokens());
         assertTrue(budget.keepRecentMessages() >= RunProfile.COMPLEX.contextBudget().keepRecentMessages());
@@ -31,12 +58,26 @@ class AnvilContextConfigTest {
 
     @Test
     void verifyConfigFromProperties() {
-        AnvilContextConfig config = new AnvilContextConfig(120_000, 80_000, 12, 8_000, 40, true, "mvn -q test", 90_000L, true, true);
+        AnvilContextConfig cfg = config(true, true, "mvn -q test", 90_000L);
 
-        assertTrue(config.verifyConfig().autoAfterWrite());
-        assertEquals("mvn -q test", config.verifyConfig().commandTemplate());
-        assertEquals(90_000L, config.verifyConfig().timeoutMs());
-        assertTrue(config.verifyConfig().injectFailuresIntoHistory());
-        assertTrue(config.loopConfig().parallelReadTools());
+        assertTrue(cfg.verifyConfig().autoAfterWrite());
+        assertTrue(cfg.verifyConfig().autoCompileAfterWrite());
+        assertEquals("mvn -q test", cfg.verifyConfig().commandTemplate());
+        assertEquals(90_000L, cfg.verifyConfig().timeoutMs());
+        assertTrue(cfg.verifyConfig().injectFailuresIntoHistory());
+        assertTrue(cfg.loopConfig().parallelReadTools());
+        assertTrue(cfg.loopConfigForProfile(RunProfile.COMPLEX).plannerRequired());
+    }
+
+    @Test
+    void verifyForExtendedAgentEnablesAutoVerify() {
+        AnvilContextConfig cfg = config(false, true, "mvn test", 90_000L);
+        assertTrue(cfg.verifyFor(Mode.AGENT, RunProfile.EXTENDED).autoAfterWrite());
+    }
+
+    @Test
+    void verifyForStandardAgentStaysOffWhenYamlFalse() {
+        AnvilContextConfig cfg = config(false, true, "mvn test", 90_000L);
+        assertFalse(cfg.verifyFor(Mode.AGENT, RunProfile.STANDARD).autoAfterWrite());
     }
 }

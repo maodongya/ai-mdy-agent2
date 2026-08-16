@@ -30,6 +30,7 @@ public final class RunContext {
     private long totalOutputTokens;
     private int toolCallCount;
     private final RunAnchors anchors = new RunAnchors();
+    private volatile boolean verifyFixRequired;
 
     public RunContext(String threadId, String runId) {
         this(threadId, runId, null);
@@ -119,5 +120,27 @@ public final class RunContext {
 
     public RunAnchors anchors() {
         return anchors;
+    }
+
+    public boolean isVerifyFixRequired() {
+        return verifyFixRequired;
+    }
+
+    public void setVerifyFixRequired(boolean required) {
+        verifyFixRequired = required;
+    }
+
+    public void clearVerifyFixRequired() {
+        verifyFixRequired = false;
+    }
+
+    private volatile boolean plannerPhaseComplete;
+
+    public boolean plannerPhaseComplete() {
+        return plannerPhaseComplete;
+    }
+
+    public void markPlannerPhaseComplete() {
+        plannerPhaseComplete = true;
     }
 }

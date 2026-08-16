@@ -56,7 +56,21 @@ public final class BenchmarkCatalog {
                 text(root, "mode"),
                 root.get("user_message").asText(),
                 root.path("max_steps").asInt(15),
-                expect);
+                expect,
+                root.path("live").asBoolean(false));
+    }
+
+    public static List<BenchmarkSpec> loadLive(Path repoRoot) throws IOException {
+        Path manifest = benchmarksDir(repoRoot).resolve("benchmark-live.json");
+        if (!Files.isRegularFile(manifest)) {
+            return List.of();
+        }
+        JsonNode root = ProtocolJson.mapper().readTree(Files.readString(manifest));
+        List<BenchmarkSpec> specs = new ArrayList<>();
+        for (JsonNode idNode : root.get("benchmarks")) {
+            specs.add(load(repoRoot, idNode.asText()));
+        }
+        return List.copyOf(specs);
     }
 
     private static String text(JsonNode node, String field) {

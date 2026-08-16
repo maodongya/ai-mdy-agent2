@@ -1,0 +1,17 @@
+{
+  "id": "read-add-live",
+  "name": "Live read task (DeepSeek)",
+  "description": "Read Add.java with real LLM.",
+  "live": true,
+  "workspace": "fixtures/repos/sample-lib",
+  "model": "deepseek:deepseek-chat",
+  "mode": "ask",
+  "user_message": "Read Add.java and tell me the method name that adds two ints.",
+  "max_steps": 8,
+  "expect": {
+    "status": "succeeded",
+    "max_step_events": 10,
+    "event_types_contains": ["run.completed"],
+    "forbid_event_types": ["run.failed", "tool.failed"]
+  }
+}

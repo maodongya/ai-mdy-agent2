@@ -4,6 +4,8 @@ import com.anvil.server.service.RunService;
 import com.anvil.server.store.ThreadRecord;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,6 +22,7 @@ import java.util.Map;
  * <ul>
  *     <li>查看工作区的目录树（/tree）</li>
  *     <li>读取工作区中某个文件的文本内容（/file）</li>
+ *     <li>保存工作区中某个文件（PUT /file，Phase 9.1）</li>
  * </ul>
  * 所有接口都必须在请求参数中携带 thread_id，表示针对哪个线程的工作区进行操作。
  */
@@ -98,4 +101,34 @@ public class WorkspaceController {
         // 读取文件内容并返回
         return ResponseEntity.ok(Map.of("path", path, "content", Files.readString(abs)));
     }
+
+    /**
+     * 保存工作区中某个文件的文本内容（Phase 9.1 人机共编）。
+     */
+    @PutMapping("/file")
+    public ResponseEntity<?> saveFile(
+            @RequestParam String thread_id,
+            @RequestParam String path,
+            @RequestBody SaveFileRequest body)
+            throws Exception {
+        ThreadRecord thread = runService.getThread(thread_id).orElse(null);
+        if (thread == null) {
+            return ResponseEntity.notFound().build();
+        }
+        Path abs = thread.workspaceRoot().resolve(path).normalize();
+        if (!abs.startsWith(thread.workspaceRoot())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "path escape"));
+        }
+        if (body == null || body.content() == null) {
+            return ResponseEntity.badRequest().body(Map.of("error", "content required"));
+        }
+        Path parent = abs.getParent();
+        if (parent != null) {
+            Files.createDirectories(parent);
+        }
+        Files.writeString(abs, body.content());
+        return ResponseEntity.ok(Map.of("path", path, "saved", true, "bytes", body.content().length()));
+    }
+
+    public record SaveFileRequest(String content) {}
 }

@@ -5,6 +5,9 @@ import com.anvil.core.compact.ContextCompactor;
 import com.anvil.core.compact.MessageHistorySanitizer;
 import com.anvil.core.instructions.PlanLoader;
 import com.anvil.core.instructions.SkillLoader;
+import com.anvil.core.orchestrator.ExploreAgent;
+import com.anvil.core.orchestrator.PlanParser;
+import com.anvil.core.orchestrator.PlannerGate;
 import com.anvil.core.model.ModelProvider;
 import com.anvil.core.model.ModelTurn;
 import com.anvil.core.model.ModelTurnContext;
@@ -93,7 +96,34 @@ public final class LoopEngine {
         ToolExecutor tools = new ToolExecutor(request.workspaceRoot(), request.shellTimeoutMs(), options.mcpBridge());
         ContextBudget budget = options.contextBudget();
 
-        seedHistory(ctx, request, priorHistory, budget, options.runProfile());
+        seedHistory(ctx, request, priorHistory, budget, options.runProfile(), options.loopConfig());
+
+        if (options.loopConfig().exploreSubAgent()) {
+            ExploreAgent.ExploreReport explore = ExploreAgent.run(
+                    request.workspaceRoot(),
+                    request.mode(),
+                    request.userMessage(),
+                    model,
+                    request.shellTimeoutMs(),
+                    options.loopConfig().exploreMaxSteps(),
+                    ctx);
+            if (explore.markdown() != null && !explore.markdown().isBlank()) {
+                ctx.appendHistory(Map.of("role", "developer", "content", explore.markdown()));
+            }
+        }
+
+        if (options.loopConfig().plannerRequired() && options.runProfile() == RunProfile.COMPLEX) {
+            PlanLoader.loadPlan(request.workspaceRoot()).ifPresent(plan -> {
+                ctx.markPlannerPhaseComplete();
+                List<String> steps = PlanParser.steps(plan);
+                if (!steps.isEmpty()) {
+                    ctx.appendHistory(Map.of("role", "developer", "content", PlanParser.formatStepsBlock(steps)));
+                }
+            });
+            if (!ctx.plannerPhaseComplete()) {
+                ctx.emit("planner.required", Map.of("plan_path", PlanTool.PLAN_PATH));
+            }
+        }
 
         ctx.emit(
                 "run.started",
@@ -157,6 +187,19 @@ public final class LoopEngine {
             ModelTurn turn = turnOpt.get();
             emitModelCompleted(ctx, stepNumber, turn);
             if (turn.isMessage()) {
+                if (ctx.isVerifyFixRequired()) {
+                    ctx.appendHistory(Map.of("role", "assistant", "content", turn.messageText()));
+                    ctx.appendHistory(
+                            Map.of(
+                                    "role",
+                                    "developer",
+                                    "content",
+                                    """
+                                    You attempted to complete while verify/diagnostics errors are still open.
+                                    Continue with tool calls to fix the code — do not reply with summary-only text until tests pass.
+                                    """.trim()));
+                    continue;
+                }
                 ctx.emit(
                         "message.completed",
                         Map.of("role", "assistant", "message_id", messageId, "text", turn.messageText()));
@@ -179,7 +222,8 @@ public final class LoopEngine {
             RunRequest request,
             List<Map<String, Object>> priorHistory,
             ContextBudget budget,
-            RunProfile profile) {
+            RunProfile profile,
+            LoopConfig loopConfig) {
         List<Map<String, Object>> prior = priorHistory == null ? List.of() : MessageHistorySanitizer.sanitize(priorHistory);
         prior.forEach(ctx::appendHistory);
         if (profile == RunProfile.COMPLEX) {
@@ -188,9 +232,21 @@ public final class LoopEngine {
                     "developer",
                     "content",
                     """
-                    Complex task mode: break work into phases, use plan.update for multi-step plans,
-                    prefer grep/codebase.search and fs.glob before many fs.read calls, and verify each phase before continuing.
-                    """.trim()));
+                    Complex task mode (Composer-style): explore report is injected above.
+                    First call plan.update with numbered steps or `- [ ]` checkboxes in .anvil/plan.md,
+                    then execute one step at a time with small patches and verify between phases.
+                    """
+                            .trim()));
+        }
+        if (loopConfig.plannerRequired() && profile == RunProfile.COMPLEX) {
+            ctx.appendHistory(Map.of(
+                    "role",
+                    "developer",
+                    "content",
+                    """
+                    Planner phase active: you MUST call plan.update before any fs.write/search_replace/apply_patch.
+                    """
+                            .trim()));
         }
         PlanLoader.loadPlan(request.workspaceRoot()).ifPresent(plan -> ctx.appendHistory(Map.of(
                 "role",
@@ -427,6 +483,63 @@ public final class LoopEngine {
                     ctx.emit("tools.parallel.completed", Map.of("count", batch.size()));
                 }
                 index = end;
+            } else if (options.loopConfig().parallelWrites()
+                    && ParallelWriteRunner.canParallelize(first.name(), decision, true)) {
+                int end = index;
+                while (end < approved.size()) {
+                    ToolCallIntent c = approved.get(end);
+                    SideEffect e = ToolSideEffects.forTool(c.name());
+                    Decision d = PolicyEngine.evaluate(new PolicyInput(
+                            request.mode(),
+                            c.name(),
+                            e,
+                            ToolExecutor.previewFor(c.name(), c.arguments()),
+                            ctx.sessionAllows(),
+                            options.autoApprovePatchTools(),
+                            options.autoApproveWrites()));
+                    if (!ParallelWriteRunner.canParallelize(c.name(), d, true)) {
+                        break;
+                    }
+                    end++;
+                }
+                List<ToolCallIntent> batch = approved.subList(index, end);
+                if (!ParallelWriteRunner.batchParallelizable(batch)) {
+                    ToolCallIntent call = approved.get(index);
+                    ctx.emit("tool.started", Map.of("tool_call_id", call.id(), "name", call.name()));
+                    String previousContent = readPreviousContent(tools, call);
+                    ToolResult result;
+                    try {
+                        result = tools.execute(call.id(), call.name(), call.arguments());
+                    } catch (IllegalArgumentException e) {
+                        result = ToolExecutor.invalidArgs(call.id(), call.name(), e.getMessage());
+                    }
+                    finishToolCall(request, options, tools, budget, ctx, call, result, previousContent);
+                    index++;
+                    continue;
+                }
+                if (batch.size() > 1) {
+                    ctx.emit("writes.parallel.started", Map.of("count", batch.size()));
+                }
+                for (ToolCallIntent call : batch) {
+                    ctx.emit("tool.started", Map.of("tool_call_id", call.id(), "name", call.name()));
+                }
+                List<ToolResult> results = ParallelWriteRunner.runBatch(tools, batch);
+                for (int i = 0; i < batch.size(); i++) {
+                    ToolCallIntent call = batch.get(i);
+                    finishToolCall(
+                            request,
+                            options,
+                            tools,
+                            budget,
+                            ctx,
+                            call,
+                            results.get(i),
+                            readPreviousContent(tools, call));
+                }
+                if (batch.size() > 1) {
+                    ctx.emit("writes.parallel.completed", Map.of("count", batch.size()));
+                }
+                index = end;
             } else {
                 ToolCallIntent call = approved.get(index);
                 ctx.emit("tool.started", Map.of("tool_call_id", call.id(), "name", call.name()));
@@ -453,6 +566,15 @@ public final class LoopEngine {
         ctx.emit(
                 "tool.planned",
                 Map.of("tool_call_id", call.id(), "name", call.name(), "arguments", call.arguments()));
+
+        if (PlannerGate.blocksWrite(
+                options.runProfile(),
+                options.loopConfig().plannerRequired(),
+                ctx.plannerPhaseComplete(),
+                call.name())) {
+            recordToolFailure(ctx, call, ErrorCodes.POLICY_DENIED, PlannerGate.blockedMessage(), budget);
+            return false;
+        }
 
         SideEffect sideEffect = ToolSideEffects.forTool(call.name());
         Map<String, Object> preview = ToolExecutor.previewFor(call.name(), call.arguments());
@@ -521,9 +643,26 @@ public final class LoopEngine {
             String previousContent) {
         recordToolOutcome(ctx, call, result, budget);
         trackToolAnchors(ctx, call, result);
+        if ("ok".equals(result.status()) && "plan.update".equals(call.name())) {
+            Object content = call.arguments() == null ? null : call.arguments().get("content");
+            List<String> steps = PlanParser.steps(content == null ? "" : String.valueOf(content));
+            ctx.markPlannerPhaseComplete();
+            ctx.emit("planner.completed", Map.of("steps", steps.size()));
+            if (!steps.isEmpty()) {
+                ctx.appendHistory(Map.of("role", "developer", "content", PlanParser.formatStepsBlock(steps)));
+            }
+        }
         if ("ok".equals(result.status()) && VerifyPass.isWriteTool(call.name())) {
             IndexService.invalidate(request.workspaceRoot());
             emitEditSummary(ctx, call, previousContent, tools);
+            DiagnosticsPass.maybeRun(
+                    ctx,
+                    request.workspaceRoot(),
+                    options.verifyConfig(),
+                    call.name(),
+                    call.arguments(),
+                    budget,
+                    request.shellTimeoutMs());
             VerifyPass.maybeRun(
                     ctx,
                     request.workspaceRoot(),

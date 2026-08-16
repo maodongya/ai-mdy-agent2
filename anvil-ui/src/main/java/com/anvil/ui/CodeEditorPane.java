@@ -2,6 +2,8 @@ package com.anvil.ui;
 
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
+import javafx.beans.property.BooleanProperty;
+import javafx.beans.property.SimpleBooleanProperty;
 import javafx.geometry.Pos;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
@@ -12,19 +14,21 @@ import javafx.scene.layout.VBox;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 
+import java.util.function.Consumer;
+
 /**
- * 只读代码查看器。
- * <p>
- * 左侧行号侧栏（VBox + Label）通过 {@link TextArea#scrollTopProperty()} 与代码区垂直同步，
- * 侧栏无滚动条，宽度固定。
+ * Editable code editor with line gutter (Phase 9.1).
  */
 final class CodeEditorPane extends BorderPane {
 
     private final TextArea code = new TextArea();
     private final VBox gutter = new VBox();
     private final StackPane gutterHost = new StackPane();
+    private final BooleanProperty dirty = new SimpleBooleanProperty(false);
+    private String savedContent = "";
     private int findAnchor;
     private double lineHeight = 15;
+    private Consumer<Boolean> dirtyListener;
 
     CodeEditorPane() {
         super();
@@ -34,7 +38,7 @@ final class CodeEditorPane extends BorderPane {
 
         Font mono = Font.font("Monospaced", 12);
 
-        code.setEditable(false);
+        code.setEditable(true);
         code.setWrapText(false);
         code.setFont(mono);
         code.getStyleClass().add("text-area");
@@ -64,12 +68,32 @@ final class CodeEditorPane extends BorderPane {
         setCenter(code);
 
         gutterHost.addEventFilter(ScrollEvent.SCROLL, this::forwardScrollToCode);
-        code.textProperty().addListener((obs, o, n) -> refreshGutter());
+        code.textProperty().addListener((obs, o, n) -> {
+            refreshGutter();
+            updateDirty();
+        });
         code.skinProperty().addListener((obs, o, skin) -> {
             if (skin != null) {
                 Platform.runLater(this::calibrateLineHeight);
             }
         });
+        dirty.addListener((obs, was, is) -> {
+            if (dirtyListener != null) {
+                dirtyListener.accept(is);
+            }
+        });
+    }
+
+    void setOnDirtyChange(Consumer<Boolean> listener) {
+        this.dirtyListener = listener;
+    }
+
+    boolean isDirty() {
+        return dirty.get();
+    }
+
+    BooleanProperty dirtyProperty() {
+        return dirty;
     }
 
     TextArea editor() {
@@ -80,11 +104,44 @@ final class CodeEditorPane extends BorderPane {
         return code.getText() != null && !code.getText().isBlank();
     }
 
+    String content() {
+        return code.getText() == null ? "" : code.getText();
+    }
+
     void setContent(String content) {
+        setContent(content, false);
+    }
+
+    /** Load content from disk; skips if editor has unsaved edits unless {@code force}. */
+    void setContent(String content, boolean force) {
+        if (!force && dirty.get()) {
+            return;
+        }
         String text = content == null ? "" : content;
         code.setText(text);
+        savedContent = text;
+        dirty.set(false);
         findAnchor = 0;
         refreshGutter();
+    }
+
+    void markSaved() {
+        savedContent = content();
+        dirty.set(false);
+    }
+
+    int cursorLine() {
+        return lineNumberAt(code.getCaretPosition()) + 1;
+    }
+
+    int cursorColumn() {
+        int caret = code.getCaretPosition();
+        String text = code.getText();
+        if (text == null || text.isEmpty()) {
+            return 1;
+        }
+        int lineStart = text.lastIndexOf('\n', Math.max(0, caret - 1));
+        return caret - lineStart;
     }
 
     boolean findNext(String query) {
@@ -111,7 +168,6 @@ final class CodeEditorPane extends BorderPane {
         return true;
     }
 
-    /** Returns 1-based line selection snippet, or null if nothing selected. */
     EditorSelectionSnapshot selectionSnapshot() {
         String selected = code.getSelectedText();
         if (selected == null || selected.isBlank()) {
@@ -126,6 +182,11 @@ final class CodeEditorPane extends BorderPane {
     }
 
     record EditorSelectionSnapshot(int startLine, int endLine, String text) {}
+
+    private void updateDirty() {
+        String current = content();
+        dirty.set(!current.equals(savedContent));
+    }
 
     private int lineNumberAt(int offset) {
         String text = code.getText();
@@ -146,7 +207,6 @@ final class CodeEditorPane extends BorderPane {
         findAnchor = 0;
     }
 
-    /** Mirrors {@link TextArea#getScrollTop()} negation for gutter translateY. */
     static double gutterTranslateY(double scrollTop) {
         return -scrollTop;
     }

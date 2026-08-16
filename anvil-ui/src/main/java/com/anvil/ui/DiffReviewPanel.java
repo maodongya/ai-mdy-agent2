@@ -30,6 +30,8 @@ final class DiffReviewPanel extends VBox {
 
     record PendingEdit(String path, String previousContent, String newContent) {}
 
+    record HunkDecisionEvent(String path, int hunkIndex, DiffEngine.HunkDecision decision) {}
+
     record DiffRow(int lineNo, String marker, String oldLine, String newLine, DiffKind kind) {}
 
     enum DiffKind { CONTEXT, ADDED, REMOVED }
@@ -37,6 +39,7 @@ final class DiffReviewPanel extends VBox {
     private static final class FileDiffState {
         PendingEdit edit;
         List<DiffRow> rows = List.of();
+        List<DiffEngine.DiffHunk> hunks = List.of();
         boolean unified;
         boolean loading;
         int added;
@@ -57,6 +60,9 @@ final class DiffReviewPanel extends VBox {
     private final Button acceptBtn = new Button("Accept");
     private final Button rejectBtn = new Button("Reject");
     private final Button acceptAllBtn = new Button("Accept All");
+    private final Button acceptHunkBtn = new Button("Accept Hunk");
+    private final Button rejectHunkBtn = new Button("Reject Hunk");
+    private final ListView<String> hunkList = new ListView<>();
     private final Button rejectAllBtn = new Button("Reject All");
 
     /** path → diff state（LinkedHashMap 保持到达顺序）。 */
@@ -65,6 +71,7 @@ final class DiffReviewPanel extends VBox {
     private Consumer<PendingEdit> onAccept = edit -> {};
     private Consumer<PendingEdit> onReject = edit -> {};
     private Runnable onQueueEmpty = () -> {};
+    private Consumer<HunkDecisionEvent> onHunkDecision = ev -> {};
 
     /** Approximate monospace char width (px) for horizontal sizing. */
     private static final double CHAR_PX = 7.8;
@@ -130,6 +137,16 @@ final class DiffReviewPanel extends VBox {
         rejectBtn.setOnAction(e -> rejectSelected());
         acceptAllBtn.setOnAction(e -> acceptAll());
         rejectAllBtn.setOnAction(e -> rejectAll());
+        acceptHunkBtn.getStyleClass().add("accent-btn");
+        rejectHunkBtn.getStyleClass().add("danger-btn");
+        acceptHunkBtn.setOnAction(e -> decideSelectedHunk(DiffEngine.HunkDecision.ACCEPTED));
+        rejectHunkBtn.setOnAction(e -> decideSelectedHunk(DiffEngine.HunkDecision.REJECTED));
+
+        hunkList.setPrefHeight(72);
+        hunkList.getStyleClass().add("diff-hunk-list");
+        hunkList.getSelectionModel()
+                .selectedIndexProperty()
+                .addListener((obs, old, idx) -> scrollToSelectedHunk());
 
         HBox beforeHeadBox = new HBox(6, beforeHeader, beforeStats);
         beforeHeadBox.setAlignment(Pos.CENTER_LEFT);
@@ -150,14 +167,14 @@ final class DiffReviewPanel extends VBox {
         codeSplit.setDividerPositions(0.5);
         VBox.setVgrow(codeSplit, Priority.ALWAYS);
 
-        HBox fileActions = new HBox(8, acceptBtn, rejectBtn);
+        HBox fileActions = new HBox(8, acceptBtn, rejectBtn, acceptHunkBtn, rejectHunkBtn);
         fileActions.setAlignment(Pos.CENTER_LEFT);
 
         HBox batchActions = new HBox(8, queueLabel, new javafx.scene.layout.Region(), acceptAllBtn, rejectAllBtn);
         HBox.setHgrow(batchActions.getChildren().get(1), Priority.ALWAYS);
         batchActions.setAlignment(Pos.CENTER_LEFT);
 
-        VBox diffPane = new VBox(6, pathLabel, headers, codeSplit, fileActions);
+        VBox diffPane = new VBox(6, pathLabel, hunkList, headers, codeSplit, fileActions);
         VBox.setVgrow(codeSplit, Priority.ALWAYS);
 
         SplitPane split = new SplitPane(fileList, diffPane);
@@ -210,8 +227,10 @@ final class DiffReviewPanel extends VBox {
         }
         state.added = added;
         state.removed = removed;
+        state.hunks = DiffEngine.hunks(rows);
 
         refreshFileList();
+        refreshHunkList(state);
         if (selectedPath == null || selectedPath.equals(edit.path())) {
             selectFile(edit.path());
         }
@@ -249,6 +268,33 @@ final class DiffReviewPanel extends VBox {
 
     void setOnQueueEmpty(Runnable handler) {
         onQueueEmpty = handler == null ? () -> {} : handler;
+    }
+
+    void setOnHunkDecision(Consumer<HunkDecisionEvent> handler) {
+        onHunkDecision = handler == null ? ev -> {} : handler;
+    }
+
+    List<DiffEngine.DiffHunk> hunksFor(String path) {
+        FileDiffState state = pendingFiles.get(path);
+        return state == null ? List.of() : state.hunks;
+    }
+
+    PendingEdit pendingEditFor(String path) {
+        FileDiffState state = pendingFiles.get(path);
+        return state == null ? null : state.edit;
+    }
+
+    List<DiffRow> rowsFor(String path) {
+        FileDiffState state = pendingFiles.get(path);
+        return state == null || state.rows == null ? List.of() : state.rows;
+    }
+
+    void updateHunks(String path, List<DiffEngine.DiffHunk> hunks) {
+        FileDiffState state = pendingFiles.get(path);
+        if (state != null) {
+            state.hunks = hunks;
+            refreshHunkList(state);
+        }
     }
 
     private void acceptSelected() {
@@ -342,6 +388,7 @@ final class DiffReviewPanel extends VBox {
 
         List<DiffRow> rows = state.rows == null ? List.of() : state.rows;
         renderDiffRows(rows);
+        refreshHunkList(state);
         beforeStats.setText(state.removed > 0 ? "−" + state.removed : "");
         afterStats.setText(state.added > 0 ? "+" + state.added : (state.unified ? "(large file)" : ""));
 
@@ -379,6 +426,78 @@ final class DiffReviewPanel extends VBox {
             beforeLines.getChildren().add(codeLine(row.lineNo(), row.marker(), row.oldLine(), row.kind(), true));
             afterLines.getChildren().add(codeLine(row.lineNo(), row.marker(), row.newLine(), row.kind(), false));
         }
+    }
+
+    private void refreshHunkList(FileDiffState state) {
+        if (state == null || state.hunks.isEmpty() || state.unified) {
+            hunkList.setItems(FXCollections.observableArrayList());
+            hunkList.setVisible(false);
+            acceptHunkBtn.setDisable(true);
+            rejectHunkBtn.setDisable(true);
+            return;
+        }
+        hunkList.setVisible(true);
+        List<String> labels = new ArrayList<>();
+        for (DiffEngine.DiffHunk h : state.hunks) {
+            String status = switch (h.decision()) {
+                case ACCEPTED -> " ✓";
+                case REJECTED -> " ✗";
+                case PENDING -> "";
+            };
+            labels.add("Hunk " + (h.index() + 1) + " +" + h.added() + " -" + h.removed() + status);
+        }
+        hunkList.setItems(FXCollections.observableArrayList(labels));
+        if (!labels.isEmpty()) {
+            hunkList.getSelectionModel().select(0);
+        }
+        acceptHunkBtn.setDisable(false);
+        rejectHunkBtn.setDisable(false);
+    }
+
+    private void decideSelectedHunk(DiffEngine.HunkDecision decision) {
+        if (selectedPath == null) {
+            return;
+        }
+        FileDiffState state = pendingFiles.get(selectedPath);
+        if (state == null || state.hunks.isEmpty()) {
+            return;
+        }
+        int idx = hunkList.getSelectionModel().getSelectedIndex();
+        if (idx < 0 || idx >= state.hunks.size()) {
+            return;
+        }
+        List<DiffEngine.DiffHunk> updated = new ArrayList<>(state.hunks);
+        updated.set(idx, DiffEngine.withDecision(state.hunks.get(idx), decision));
+        state.hunks = updated;
+        refreshHunkList(state);
+        onHunkDecision.accept(new HunkDecisionEvent(selectedPath, idx, decision));
+        if (DiffEngine.allHunksResolved(state.hunks)) {
+            appendHunkSummary(state);
+        }
+    }
+
+    private void appendHunkSummary(FileDiffState state) {
+        long rejected = state.hunks.stream().filter(h -> h.decision() == DiffEngine.HunkDecision.REJECTED).count();
+        if (rejected == state.hunks.size() && state.edit != null) {
+            rejectSelected();
+        }
+    }
+
+    private void scrollToSelectedHunk() {
+        if (selectedPath == null) {
+            return;
+        }
+        FileDiffState state = pendingFiles.get(selectedPath);
+        if (state == null || state.rows.isEmpty()) {
+            return;
+        }
+        int idx = hunkList.getSelectionModel().getSelectedIndex();
+        if (idx < 0 || idx >= state.hunks.size()) {
+            return;
+        }
+        DiffEngine.DiffHunk hunk = state.hunks.get(idx);
+        double fraction = hunk.rowStart() / (double) Math.max(1, state.rows.size());
+        beforeScroll.setVvalue(fraction);
     }
 
     private void clearCodePanes() {

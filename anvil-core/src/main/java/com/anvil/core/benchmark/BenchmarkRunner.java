@@ -1,9 +1,15 @@
 package com.anvil.core.benchmark;
 
+import com.anvil.core.loop.LoopConfig;
 import com.anvil.core.loop.LoopEngine;
 import com.anvil.core.loop.LoopOptions;
 import com.anvil.core.loop.LoopResult;
+import com.anvil.core.loop.RunProfile;
 import com.anvil.core.loop.RunRequest;
+import com.anvil.core.loop.VerifyConfig;
+import com.anvil.core.model.LlmRegistry;
+import com.anvil.core.model.ModelProvider;
+import com.anvil.core.model.ModelProviderFactory;
 import com.anvil.core.model.ScriptedModel;
 import com.anvil.core.tools.ToolCatalog;
 import com.anvil.protocol.ApprovalDecision;
@@ -24,7 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
-/** Runs a benchmark spec and scores trace + workspace assertions. */
+/** Runs benchmarks with scripted or live LLM providers. */
 public final class BenchmarkRunner {
 
     public record CheckResult(String name, boolean passed, String detail) {}
@@ -41,28 +47,41 @@ public final class BenchmarkRunner {
     private BenchmarkRunner() {}
 
     public static BenchmarkReport runAndScore(Path repoRoot, BenchmarkSpec spec) throws IOException {
+        return runAndScore(repoRoot, spec, LlmRegistry.fromEnv());
+    }
+
+    public static BenchmarkReport runAndScore(Path repoRoot, BenchmarkSpec spec, LlmRegistry registry)
+            throws IOException {
         Path workspace = prepareWorkspace(repoRoot, spec);
         try {
-            ScriptedModel model = new ScriptedModel(repoRoot.resolve(spec.model()));
+            ModelProvider provider = createProvider(repoRoot, spec, registry);
+            VerifyConfig verify = spec.live()
+                    ? VerifyConfig.forRun(VerifyConfig.defaults(), spec.modeEnum(), RunProfile.EXTENDED)
+                    : VerifyConfig.disabled();
             LoopResult result = LoopEngine.run(
                     new RunRequest(
                             "bench_" + spec.id(),
                             "run_" + spec.id(),
                             spec.modeEnum(),
-                            "scripted:" + spec.id(),
+                            spec.model(),
                             spec.userMessage(),
                             workspace,
                             spec.maxSteps(),
                             5_000L,
-                            30_000L),
-                    model,
+                            120_000L),
+                    provider,
                     (id, preview, timeout) -> CompletableFuture.completedFuture(ApprovalDecision.ALLOW_ONCE),
                     new LoopOptions(
-                            0,
+                            RunProfile.EXTENDED.contextBudget(),
                             SandboxTier.WORKSPACE_WRITE,
                             "main",
                             ToolCatalog.builtinSchemas(spec.modeEnum()),
-                            null),
+                            null,
+                            RunProfile.EXTENDED,
+                            true,
+                            false,
+                            verify,
+                            LoopConfig.disabledParallel()),
                     null);
             return evaluate(spec, result, workspace);
         } finally {
@@ -70,6 +89,18 @@ public final class BenchmarkRunner {
                 deleteRecursively(workspace);
             }
         }
+    }
+
+    private static ModelProvider createProvider(Path repoRoot, BenchmarkSpec spec, LlmRegistry registry)
+            throws IOException {
+        if (spec.live()) {
+            try {
+                return ModelProviderFactory.create(spec.model(), registry, repoRoot.resolve("fixtures"));
+            } catch (Exception e) {
+                throw new IOException("live model provider failed: " + e.getMessage(), e);
+            }
+        }
+        return new ScriptedModel(repoRoot.resolve(spec.model()));
     }
 
     static BenchmarkReport evaluate(BenchmarkSpec spec, LoopResult result, Path workspace) throws IOException {

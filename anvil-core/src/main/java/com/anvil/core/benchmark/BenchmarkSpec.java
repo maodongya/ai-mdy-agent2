@@ -16,7 +16,8 @@ public record BenchmarkSpec(
         String mode,
         String userMessage,
         int maxSteps,
-        BenchmarkExpect expect) {
+        BenchmarkExpect expect,
+        boolean live) {
 
     public BenchmarkSpec {
         if (maxSteps <= 0) {
@@ -28,6 +29,21 @@ public record BenchmarkSpec(
         if (expect == null) {
             expect = BenchmarkExpect.empty();
         }
+    }
+
+    /** Backward-compatible ctor without live flag. */
+    public BenchmarkSpec(
+            String id,
+            String name,
+            String description,
+            String workspace,
+            String workspaceFrom,
+            String model,
+            String mode,
+            String userMessage,
+            int maxSteps,
+            BenchmarkExpect expect) {
+        this(id, name, description, workspace, workspaceFrom, model, mode, userMessage, maxSteps, expect, false);
     }
 
     public Mode modeEnum() {

@@ -14,7 +14,7 @@ import java.util.Set;
 /** Runs Maven verify after write tools and injects failures into agent history. */
 final class VerifyPass {
 
-    private static final Set<String> WRITE_TOOLS = Set.of("fs.write", "search_replace", "apply_patch");
+    private static final Set<String> WRITE_TOOLS = Set.of("fs.write", "search_replace", "apply_patch", "edit.plan");
 
     private VerifyPass() {}
 
@@ -76,6 +76,7 @@ final class VerifyPass {
         }
 
         if ("ok".equals(result.status())) {
+            ctx.clearVerifyFixRequired();
             ctx.emit("verify.completed", payload);
             return;
         }
@@ -86,6 +87,10 @@ final class VerifyPass {
         }
         if (config.injectFailuresIntoHistory()) {
             injectVerifyHistory(ctx, verifyId, result, budget);
+        }
+        if (config.forceFixOnFailure()) {
+            ctx.setVerifyFixRequired(true);
+            injectDeveloperFix(ctx, result.content());
         }
     }
 
@@ -100,6 +105,24 @@ final class VerifyPass {
                 ContextCompactor.truncateContent(result.content(), budget.maxToolContentChars())
                         + "\n\nFix the errors above before continuing.");
         ctx.appendHistory(item);
+    }
+
+    private static void injectDeveloperFix(RunContext ctx, String content) {
+        String snippet = content == null ? "" : content.replace('\n', ' ').trim();
+        if (snippet.length() > 200) {
+            snippet = snippet.substring(0, 197) + "...";
+        }
+        ctx.appendHistory(
+                Map.of(
+                        "role",
+                        "developer",
+                        "content",
+                        """
+                        Verify failed after your edit. You MUST fix all test/compile errors before completing the run.
+                        Apply fixes with search_replace or apply_patch — do not finish with a text-only reply until verify passes.
+                        """
+                                .trim()
+                                + (snippet.isBlank() ? "" : "\nPreview: " + snippet)));
     }
 
     private static String stringArg(Map<String, Object> args, String key) {

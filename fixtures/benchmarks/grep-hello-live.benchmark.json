@@ -1,0 +1,17 @@
+{
+  "id": "grep-hello-live",
+  "name": "Live grep task (DeepSeek)",
+  "description": "Find Hello.java with grep using real LLM.",
+  "live": true,
+  "workspace": "fixtures/repos/sample-lib",
+  "model": "deepseek:deepseek-chat",
+  "mode": "agent",
+  "user_message": "Use grep to find which file contains 'class Hello' and reply with the path only.",
+  "max_steps": 12,
+  "expect": {
+    "status": "succeeded",
+    "max_step_events": 15,
+    "event_types_contains": ["tool.completed", "run.completed"],
+    "forbid_event_types": ["run.failed"]
+  }
+}

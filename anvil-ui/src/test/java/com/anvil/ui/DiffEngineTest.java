@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DiffEngineTest {
@@ -39,5 +40,12 @@ class DiffEngineTest {
         List<DiffReviewPanel.DiffRow> rows = DiffEngine.lines(big.toString(), big.toString());
         assertEquals(1, rows.size());
         assertTrue(rows.get(0).oldLine().contains("truncated"));
+    }
+
+    @Test
+    void groupsHunksFromDiffRows() {
+        List<DiffReviewPanel.DiffRow> rows = DiffEngine.lines("a\nb\nc", "a\nB\nc\nd");
+        List<DiffEngine.DiffHunk> hunks = DiffEngine.hunks(rows);
+        assertFalse(hunks.isEmpty());
     }
 }

@@ -65,10 +65,25 @@ final class AgentEventFormatter {
             case "edit.preview" -> "diff · " + str(payload.get("path"));
             case "tools.parallel.started" -> "parallel · " + num(payload.get("count")) + " read tools";
             case "tools.parallel.completed" -> "parallel done · " + num(payload.get("count")) + " tools";
+            case "writes.parallel.started" -> "parallel writes · " + num(payload.get("count"));
+            case "writes.parallel.completed" -> "parallel writes done · " + num(payload.get("count"));
+            case "explore.started" -> "explore · max " + num(payload.get("max_steps")) + " steps";
+            case "explore.completed" -> "explore done · "
+                    + num(payload.get("files"))
+                    + " files · "
+                    + num(payload.get("tool_calls"))
+                    + " tools";
+            case "planner.required" -> "planner · call plan.update → " + str(payload.get("plan_path"));
+            case "planner.completed" -> "planner ok · " + num(payload.get("steps")) + " steps";
             case "verify.started" -> "verify · " + str(payload.get("command"));
             case "verify.completed" -> "verify ok · " + str(payload.get("command"));
             case "verify.failed" -> "verify failed · "
                     + str(payload.get("command"))
+                    + preview(payload.get("preview"));
+            case "diagnostics.auto.started" -> "compile · " + str(payload.get("path"));
+            case "diagnostics.auto.completed" -> "compile ok · " + str(payload.get("path"));
+            case "diagnostics.auto.failed" -> "compile failed · "
+                    + str(payload.get("path"))
                     + preview(payload.get("preview"));
             case "approval.required" -> "approval · "
                     + str(payload.get("tool"))
@@ -78,6 +93,10 @@ final class AgentEventFormatter {
                     + str(payload.get("approval_id"))
                     + " → "
                     + str(payload.get("decision"));
+            case "model.routed" -> "model routed · step "
+                    + num(payload.get("step"))
+                    + " → "
+                    + str(payload.get("model"));
             case "run.completed" -> formatRunCompleted(payload);
             case "run.failed" -> formatRunFailed(payload);
             case "run.cancelled" -> type + usageSuffix(payload.get("usage"));
@@ -97,8 +116,10 @@ final class AgentEventFormatter {
         return switch (type) {
             case "message.completed", "message.delta" -> ConsoleLine.Kind.MESSAGE;
             case "tool.planned", "tool.started", "tool.completed", "edit.summary", "edit.preview" -> ConsoleLine.Kind.TOOL;
-            case "tools.parallel.started", "tools.parallel.completed" -> ConsoleLine.Kind.CONTEXT;
-            case "verify.started", "verify.completed", "verify.failed" -> ConsoleLine.Kind.TOOL;
+            case "tools.parallel.started", "tools.parallel.completed", "writes.parallel.started", "writes.parallel.completed",
+                    "explore.started", "explore.completed", "planner.required", "planner.completed" -> ConsoleLine.Kind.CONTEXT;
+            case "verify.started", "verify.completed", "verify.failed",
+                    "diagnostics.auto.started", "diagnostics.auto.completed", "diagnostics.auto.failed" -> ConsoleLine.Kind.TOOL;
             case "approval.required", "approval.resolved" -> ConsoleLine.Kind.APPROVAL;
             case "run.failed", "run.cancelled", "tool.failed" -> ConsoleLine.Kind.ERROR;
             case "step.started", "context.compacted", "thread.memory.loaded" -> ConsoleLine.Kind.CONTEXT;

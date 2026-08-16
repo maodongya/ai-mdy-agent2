@@ -1,5 +1,7 @@
 package com.anvil.core.model;
 
+import com.anvil.core.config.EnvSecrets;
+
 import java.time.Duration;
 
 public record OpenAiConfig(String baseUrl, String apiKey, String model, Duration timeout) {
@@ -22,8 +24,8 @@ public record OpenAiConfig(String baseUrl, String apiKey, String model, Duration
 
     public static OpenAiConfig fromEnv(String model, String apiKeyEnv, String baseUrl) {
         String envName = apiKeyEnv == null || apiKeyEnv.isBlank() ? "OPENAI_API_KEY" : apiKeyEnv;
-        String key = System.getenv(envName);
-        return new OpenAiConfig(baseUrl, key == null ? "" : key, model, Duration.ofSeconds(120));
+        String key = EnvSecrets.get(envName);
+        return new OpenAiConfig(baseUrl, key, model, Duration.ofSeconds(120));
     }
 
     public OpenAiConfig withModel(String model) {

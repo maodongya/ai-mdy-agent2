@@ -4,6 +4,8 @@ import com.anvil.core.compact.ContextBudget;
 import com.anvil.core.loop.LoopConfig;
 import com.anvil.core.loop.RunProfile;
 import com.anvil.core.loop.VerifyConfig;
+import com.anvil.core.model.ModelRoutingConfig;
+import com.anvil.protocol.Mode;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -11,63 +13,65 @@ import org.springframework.stereotype.Component;
 @Component
 public final class AnvilContextConfig {
 
-    /** 触发上下文压缩的 token 阈值。 */
     private final int compactThresholdTokens;
-    /** 压缩后的目标上下文 token 数。 */
     private final int contextTargetTokens;
-    /** 压缩后保留的最近消息条数。 */
     private final int contextKeepRecent;
-    /** 工具返回内容的单次最大字符数上限。 */
     private final int toolContentMaxChars;
-    /** 默认的最大步骤数上限。 */
     private final int maxStepsDefault;
-    /** 验证（verify）配置。 */
     private final VerifyConfig verifyConfig;
-    /** 循环（loop）配置。 */
     private final LoopConfig loopConfig;
+    private final ModelRoutingConfig modelRouting;
+    private final boolean parallelWrites;
+    private final boolean exploreSubAgent;
+    private final boolean plannerRequired;
+    private final int exploreMaxSteps;
 
-    /**
-     * 构造函数：从 Spring 配置属性注入并组装各项运行时配置。
-     *
-     * @param compactThresholdTokens 压缩阈值（token）
-     * @param contextTargetTokens    压缩后目标 token 数
-     * @param contextKeepRecent      保留的最近消息条数
-     * @param toolContentMaxChars    工具内容最大字符数
-     * @param maxStepsDefault        默认最大步骤数
-     * @param verifyAutoAfterWrite   写入后是否自动验证
-     * @param verifyCommandTemplate  验证命令模板
-     * @param verifyTimeoutMs        验证超时（毫秒）
-     * @param verifyInjectFailures   是否注入失败作为测试
-     * @param parallelReadTools      是否允许并行读取工具
-     */
     public AnvilContextConfig(
             @Value("${anvil.compact-threshold-tokens:120000}") int compactThresholdTokens,
             @Value("${anvil.context-target-tokens:80000}") int contextTargetTokens,
             @Value("${anvil.context-keep-recent:24}") int contextKeepRecent,
             @Value("${anvil.tool-content-max-chars:16000}") int toolContentMaxChars,
             @Value("${anvil.max-steps-default:40}") int maxStepsDefault,
-            @Value("${anvil.verify.auto-after-write:true}") boolean verifyAutoAfterWrite,
+            @Value("${anvil.verify.auto-after-write:false}") boolean verifyAutoAfterWrite,
+            @Value("${anvil.verify.auto-compile-after-write:true}") boolean verifyAutoCompileAfterWrite,
             @Value("${anvil.verify.command-template:}") String verifyCommandTemplate,
-            @Value("${anvil.verify.timeout-ms:180000}") long verifyTimeoutMs,
+            @Value("${anvil.verify.timeout-ms:90000}") long verifyTimeoutMs,
             @Value("${anvil.verify.inject-failures:true}") boolean verifyInjectFailures,
-            @Value("${anvil.loop.parallel-read-tools:true}") boolean parallelReadTools) {
+            @Value("${anvil.verify.force-fix-on-failure:true}") boolean verifyForceFixOnFailure,
+            @Value("${anvil.loop.parallel-read-tools:true}") boolean parallelReadTools,
+            @Value("${anvil.loop.parallel-writes:true}") boolean parallelWrites,
+            @Value("${anvil.loop.explore-sub-agent:true}") boolean exploreSubAgent,
+            @Value("${anvil.loop.planner-required:true}") boolean plannerRequired,
+            @Value("${anvil.loop.explore-max-steps:6}") int exploreMaxSteps,
+            @Value("${anvil.model.routing.enabled:true}") boolean modelRoutingEnabled,
+            @Value("${anvil.model.routing.explore:deepseek:deepseek-chat}") String exploreModel,
+            @Value("${anvil.model.routing.edit:deepseek:deepseek-chat}") String editModel,
+            @Value("${anvil.model.routing.plan:deepseek:deepseek-reasoner}") String planModel) {
         this.compactThresholdTokens = compactThresholdTokens;
         this.contextTargetTokens = contextTargetTokens;
         this.contextKeepRecent = contextKeepRecent;
         this.toolContentMaxChars = toolContentMaxChars;
         this.maxStepsDefault = maxStepsDefault;
+        this.parallelWrites = parallelWrites;
+        this.exploreSubAgent = exploreSubAgent;
+        this.plannerRequired = plannerRequired;
+        this.exploreMaxSteps = exploreMaxSteps;
         this.verifyConfig = new VerifyConfig(
-                verifyAutoAfterWrite, verifyCommandTemplate, verifyTimeoutMs, verifyInjectFailures);
-        this.loopConfig = new LoopConfig(parallelReadTools);
+                verifyAutoAfterWrite,
+                verifyCommandTemplate,
+                verifyTimeoutMs,
+                verifyInjectFailures,
+                verifyAutoCompileAfterWrite,
+                verifyForceFixOnFailure);
+        this.loopConfig = new LoopConfig(parallelReadTools, parallelWrites, exploreSubAgent, plannerRequired, exploreMaxSteps);
+        this.modelRouting = new ModelRoutingConfig(modelRoutingEnabled, exploreModel, editModel, planModel);
     }
 
-    /** 返回基于服务器配置的基础 ContextBudget（默认预算）。 */
     public ContextBudget baseBudget() {
         return new ContextBudget(
                 compactThresholdTokens, contextTargetTokens, contextKeepRecent, toolContentMaxChars);
     }
 
-    /** 取服务器配置与所选运行档案两者中更高的上限值。 */
     public ContextBudget budgetForProfile(RunProfile profile) {
         ContextBudget base = baseBudget();
         ContextBudget preset = profile.contextBudget();
@@ -78,18 +82,33 @@ public final class AnvilContextConfig {
                 Math.max(base.maxToolContentChars(), preset.maxToolContentChars()));
     }
 
-    /** 返回默认的最大步骤数。 */
     public int maxStepsDefault() {
         return maxStepsDefault;
     }
 
-    /** 返回验证配置。 */
     public VerifyConfig verifyConfig() {
         return verifyConfig;
     }
 
-    /** 返回循环配置。 */
+    public VerifyConfig verifyFor(Mode mode, RunProfile profile) {
+        return VerifyConfig.forRun(verifyConfig, mode, profile);
+    }
+
     public LoopConfig loopConfig() {
         return loopConfig;
+    }
+
+    public LoopConfig loopConfigForProfile(RunProfile profile) {
+        LoopConfig preset = LoopConfig.forProfile(profile);
+        return new LoopConfig(
+                loopConfig.parallelReadTools(),
+                parallelWrites && preset.parallelWrites(),
+                exploreSubAgent && preset.exploreSubAgent(),
+                plannerRequired && preset.plannerRequired(),
+                exploreMaxSteps > 0 ? exploreMaxSteps : preset.exploreMaxSteps());
+    }
+
+    public ModelRoutingConfig modelRouting() {
+        return modelRouting;
     }
 }

@@ -26,6 +26,18 @@ class ModelProviderFactoryTest {
     }
 
     @Test
+    void bareDeepSeekModelIdUsesDeepSeekBaseUrl() throws Exception {
+        LlmRegistry registry = new LlmRegistry(
+                new OpenAiConfig(OpenAiConfig.OPENAI_BASE_URL, "openai-key", "gpt-4o-mini", null),
+                new OpenAiConfig(OpenAiConfig.DEEPSEEK_BASE_URL, "deepseek-key", "deepseek-chat", null));
+
+        OpenAiConfig resolved = registry.resolve("deepseek-chat");
+        assertEquals(OpenAiConfig.DEEPSEEK_BASE_URL, resolved.baseUrl());
+        assertEquals("deepseek-key", resolved.apiKey());
+        assertEquals("deepseek-chat", resolved.model());
+    }
+
+    @Test
     void openaiPrefixUsesOpenAiBaseUrl() throws Exception {
         LlmRegistry registry = new LlmRegistry(
                 new OpenAiConfig(OpenAiConfig.OPENAI_BASE_URL, "openai-key", "gpt-4o-mini", null),

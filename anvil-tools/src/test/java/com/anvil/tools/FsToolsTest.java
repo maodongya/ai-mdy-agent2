@@ -68,6 +68,17 @@ class FsToolsTest {
     }
 
     @Test
+    void writeRejectsLargeFiles() {
+        StringBuilder big = new StringBuilder();
+        for (int i = 0; i < 301; i++) {
+            big.append("line").append(i).append('\n');
+        }
+        ToolResult r = fs.write("c7", "big.txt", big.toString());
+        assertEquals("error", r.status());
+        assertTrue(r.error().message().contains("refusing fs.write"));
+    }
+
+    @Test
     void executeMissingPathReturnsErrorNotThrow() {
         ToolResult r = FsTools.execute(fs, "fs.write", "c6", Map.of("content", "only content"));
         assertEquals("error", r.status());

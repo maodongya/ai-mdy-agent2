@@ -1,0 +1,21 @@
+{
+  "id": "patch-add-live",
+  "name": "Live patch bugfix (DeepSeek)",
+  "description": "Fix subtract bug using search_replace with real LLM.",
+  "live": true,
+  "workspace": "temp",
+  "workspace_from": "fixtures/repos/sample-lib-buggy",
+  "model": "deepseek:deepseek-chat",
+  "mode": "agent",
+  "user_message": "Fix the bug in Add.java so add(2,3) returns 5. Use search_replace only.",
+  "max_steps": 20,
+  "expect": {
+    "status": "succeeded",
+    "max_step_events": 25,
+    "event_types_contains": ["run.completed"],
+    "file_contains": {
+      "src/main/java/com/example/Add.java": "return a + b"
+    },
+    "forbid_event_types": ["run.failed"]
+  }
+}

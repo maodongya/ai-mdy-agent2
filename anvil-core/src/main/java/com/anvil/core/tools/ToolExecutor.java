@@ -6,10 +6,12 @@ import com.anvil.protocol.ErrorInfo;
 import com.anvil.protocol.ToolResult;
 import com.anvil.tools.CodebaseSearchTool;
 import com.anvil.tools.DiagnosticsTool;
+import com.anvil.tools.EditPlanTool;
 import com.anvil.tools.EditTools;
 import com.anvil.tools.FsTools;
 import com.anvil.tools.GitTools;
 import com.anvil.tools.GrepTool;
+import com.anvil.tools.MultiFilePatch;
 import com.anvil.tools.PlanTool;
 import com.anvil.tools.ShellTool;
 import com.anvil.tools.SymbolsSearchTool;
@@ -63,8 +65,16 @@ public final class ToolExecutor {
                     stringArg(args, "old_string", ""),
                     stringArg(args, "new_string", ""),
                     boolArg(args, "replace_all", false));
-            case "apply_patch" -> EditTools.applyPatch(
-                    fsTools, toolCallId, stringArg(args, "path", ""), stringArg(args, "patch", ""));
+            case "apply_patch" -> {
+                String patch = stringArg(args, "patch", "");
+                if (MultiFilePatch.isMultiFile(patch)) {
+                    yield EditTools.applyMultiFilePatch(fsTools, toolCallId, patch);
+                }
+                yield EditTools.applyPatch(
+                        fsTools, toolCallId, stringArg(args, "path", ""), patch);
+            }
+            case "edit.plan" -> EditPlanTool.execute(
+                    fsTools, toolCallId, stringArg(args, "operations", ""));
             case "git.status" -> GitTools.status(fsTools.workspaceRoot(), toolCallId);
             case "git.diff" -> GitTools.diffStat(fsTools.workspaceRoot(), toolCallId);
             case "diagnostics.collect" -> DiagnosticsTool.collect(
@@ -84,9 +94,9 @@ public final class ToolExecutor {
         }
         Map<String, Object> args = arguments == null ? Map.of() : arguments;
         return switch (name) {
-            case "fs.write", "search_replace", "apply_patch" -> Map.of(
-                    "summary", name + " " + args.get("path"),
-                    "paths", List.of(String.valueOf(args.get("path"))));
+            case "fs.write", "search_replace", "apply_patch", "edit.plan" -> Map.of(
+                    "summary", name + " " + args.getOrDefault("path", summarizeEditPlan(name, args)),
+                    "paths", previewPaths(name, args));
             case "plan.update" -> Map.of(
                     "summary", "update plan",
                     "paths", List.of(PlanTool.PLAN_PATH));
@@ -99,6 +109,31 @@ public final class ToolExecutor {
             case "diagnostics.collect" -> Map.of("summary", "diagnostics: " + args.getOrDefault("scope", "compile"));
             default -> Map.of("summary", name);
         };
+    }
+
+    private static String summarizeEditPlan(String name, Map<String, Object> args) {
+        if ("edit.plan".equals(name)) {
+            return EditPlanTool.summarize(String.valueOf(args.getOrDefault("operations", "[]")));
+        }
+        return String.valueOf(args.get("path"));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> previewPaths(String name, Map<String, Object> args) {
+        if ("edit.plan".equals(name)) {
+            try {
+                var ops = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(String.valueOf(args.getOrDefault("operations", "[]")), List.class);
+                return ops.stream()
+                        .filter(o -> o instanceof Map<?, ?> m && m.get("path") != null)
+                        .map(o -> String.valueOf(((Map<?, ?>) o).get("path")))
+                        .toList();
+            } catch (Exception e) {
+                return List.of("(edit plan)");
+            }
+        }
+        Object path = args.get("path");
+        return path == null ? List.of() : List.of(String.valueOf(path));
     }
 
     private static String stringArg(Map<String, Object> args, String key, String defaultValue) {

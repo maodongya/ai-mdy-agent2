@@ -16,6 +16,11 @@ anvil:
     model-id: scripted:read-add
     base-url: https://api.openai.com/v1
     api-key-env: OPENAI_API_KEY
+    routing:
+      enabled: true
+      explore: deepseek:deepseek-chat
+      edit: deepseek:deepseek-chat
+      plan: deepseek:deepseek-reasoner
   deepseek:
     base-url: https://api.deepseek.com/v1
     api-key-env: DEEPSEEK_API_KEY

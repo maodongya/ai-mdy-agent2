@@ -22,6 +22,7 @@ public final class UiSettings {
     private boolean terminalVisible;
     private boolean mirrorAgentShell;
     private String theme = "dark";
+    private boolean diagnosticsOnSave = true;
 
     public UiSettings(
             String serverUrl,
@@ -56,6 +57,7 @@ public final class UiSettings {
                 PREFS.getBoolean("terminalVisible", true),
                 PREFS.getBoolean("mirrorAgentShell", true));
         s.theme = PREFS.get("theme", "dark");
+        s.diagnosticsOnSave = PREFS.getBoolean("diagnosticsOnSave", true);
         return s;
     }
 
@@ -70,6 +72,7 @@ public final class UiSettings {
         PREFS.putBoolean("terminalVisible", terminalVisible);
         PREFS.putBoolean("mirrorAgentShell", mirrorAgentShell);
         PREFS.put("theme", theme);
+        PREFS.putBoolean("diagnosticsOnSave", diagnosticsOnSave);
     }
 
     public void saveDividers(double main, double center) {
@@ -190,5 +193,13 @@ public final class UiSettings {
 
     public void setTheme(String theme) {
         this.theme = theme;
+    }
+
+    public boolean diagnosticsOnSave() {
+        return diagnosticsOnSave;
+    }
+
+    public void setDiagnosticsOnSave(boolean diagnosticsOnSave) {
+        this.diagnosticsOnSave = diagnosticsOnSave;
     }
 }

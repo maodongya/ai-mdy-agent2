@@ -16,13 +16,19 @@ anvil:
     auto-approve-patch-tools: true
   verify:
     auto-after-write: false
+    auto-compile-after-write: true
     command-template: "mvn -q test -pl {module} -am"
     timeout-ms: 90000
     inject-failures: true
+    force-fix-on-failure: true
   index:
     auto-warm: true
   loop:
     parallel-read-tools: true
+    parallel-writes: true
+    explore-sub-agent: true
+    planner-required: true
+    explore-max-steps: 6
   terminal:
     enabled: true
     max-sessions-per-thread: 3
@@ -35,10 +41,21 @@ anvil:
     model-id: scripted:read-add
     base-url: https://api.openai.com/v1
     api-key-env: OPENAI_API_KEY
+    routing:
+      enabled: true
+      explore: deepseek:deepseek-chat
+      edit: deepseek:deepseek-chat
+      plan: deepseek:deepseek-reasoner
+  editor:
+    diagnostics-on-save: true
   deepseek:
     base-url: https://api.deepseek.com/v1
     api-key-env: DEEPSEEK_API_KEY
     model-id: deepseek-chat
   mcp:
-    allowlist: []
+    allowlist:
+      - junit
+      - github
+      - checkstyle
+    builtin-stubs: true
     rpc-timeout-ms: 30000

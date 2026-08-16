@@ -70,7 +70,7 @@ public final class ToolCatalog {
         if (mode != Mode.ASK) {
             tools.add(schema(
                     "search_replace",
-                    "Replace old_string with new_string in a file. Prefer over fs.write for edits.",
+                    "Replace old_string with new_string in a file. Fuzzy match on whitespace/indent differences.",
                     Map.of(
                             "type",
                             "object",
@@ -88,19 +88,43 @@ public final class ToolCatalog {
                             List.of("path", "old_string", "new_string"))));
             tools.add(schema(
                     "apply_patch",
-                    "Apply unified diff patch to a single file.",
+                    "Apply unified diff patch to one or more files (multi-file patch with ---/+++ headers supported).",
                     Map.of(
                             "type",
                             "object",
                             "properties",
                             Map.of(
-                                    "path", Map.of("type", "string"),
-                                    "patch", Map.of("type", "string", "description", "Unified diff hunks")),
+                                    "path",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "Target file (optional when patch includes ---/+++ headers)"),
+                                    "patch",
+                                    Map.of("type", "string", "description", "Unified diff hunks")),
                             "required",
-                            List.of("path", "patch"))));
+                            List.of("patch"))));
+            tools.add(schema(
+                    "edit.plan",
+                    "Batch edit plan: JSON array of {path, old_string, new_string} or {path, patch}. Requires approval; applies atomically.",
+                    Map.of(
+                            "type",
+                            "object",
+                            "properties",
+                            Map.of(
+                                    "operations",
+                                    Map.of(
+                                            "type",
+                                            "string",
+                                            "description",
+                                            "JSON array of edit operations")),
+                            "required",
+                            List.of("operations"))));
             tools.add(schema(
                     "fs.write",
-                    "Write entire file (new files or small files only; use search_replace for large edits)",
+                    "Write entire file (new/small files only, max "
+                            + com.anvil.tools.EditTools.maxWriteLinesHint()
+                            + " lines; use search_replace for large edits)",
                     Map.of(
                             "type",
                             "object",

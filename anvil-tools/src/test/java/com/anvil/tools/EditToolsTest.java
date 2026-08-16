@@ -41,6 +41,38 @@ class EditToolsTest {
     }
 
     @Test
+    void searchReplaceFuzzyWhitespace() throws Exception {
+        Files.writeString(workspace.resolve("Spaced.java"), "void  a()  {}\n");
+        var r = EditTools.searchReplace(fs, "c3", "Spaced.java", "void a()", "void b()", false);
+        assertEquals("ok", r.status());
+        assertTrue(Files.readString(workspace.resolve("Spaced.java")).contains("void b()"));
+    }
+
+    @Test
+    void applyMultiFilePatchViaTool(@TempDir Path workspace) throws Exception {
+        Files.writeString(workspace.resolve("X.java"), "x\n");
+        Files.writeString(workspace.resolve("Y.java"), "y\n");
+        FsTools fsTools = new FsTools(workspace);
+        String patch =
+                """
+                --- a/X.java
+                +++ b/X.java
+                @@ -1,1 +1,1 @@
+                -x
+                +X
+                --- a/Y.java
+                +++ b/Y.java
+                @@ -1,1 +1,1 @@
+                -y
+                +Y
+                """;
+        var r = EditTools.applyMultiFilePatch(fsTools, "mf", patch);
+        assertEquals("ok", r.status());
+        assertEquals("X\n", Files.readString(workspace.resolve("X.java")));
+        assertEquals("Y\n", Files.readString(workspace.resolve("Y.java")));
+    }
+
+    @Test
     void applyUnifiedPatch() {
         String original = "aaa\nbbb\nccc\n";
         String patch = "@@ -2,1 +2,1 @@\n-bbb\n+BBB\n";

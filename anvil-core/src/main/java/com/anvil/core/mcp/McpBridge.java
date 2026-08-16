@@ -52,7 +52,7 @@ public final class McpBridge implements AutoCloseable {
     }
 
     public List<Map<String, Object>> toolSchemas() {
-        List<Map<String, Object>> schemas = new ArrayList<>();
+        List<Map<String, Object>> schemas = new ArrayList<>(BuiltinMcpRegistry.toolSchemas(allowlist));
         for (String server : configs.keySet()) {
             if (!isAllowedServer(server)) {
                 continue;
@@ -72,6 +72,9 @@ public final class McpBridge implements AutoCloseable {
 
     public ToolResult execute(String toolCallId, String toolName, Map<String, Object> arguments) {
         McpToolRef ref = parseToolName(toolName);
+        if (BuiltinMcpRegistry.isBuiltinServer(ref.server()) && isAllowedServer(ref.server()) && !configs.containsKey(ref.server())) {
+            return BuiltinMcpRegistry.execute(toolCallId, toolName, arguments);
+        }
         if (!configs.containsKey(ref.server())) {
             return denied(toolCallId, toolName, "unknown MCP server: " + ref.server());
         }

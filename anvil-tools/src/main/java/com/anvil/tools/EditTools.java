@@ -16,6 +16,7 @@ import java.util.List;
 public final class EditTools {
 
     private static final int MAX_WRITE_LINES_HINT = 300;
+    private static final double FUZZY_AUTO_APPLY = 0.88;
 
     private EditTools() {}
 
@@ -46,13 +47,35 @@ public final class EditTools {
                 return error(toolCallId, "search_replace", ErrorCodes.TOOL_FAILED, "not a file: " + path);
             }
             String content = Files.readString(abs);
-            int count = countOccurrences(content, oldString);
+            String matchText = oldString;
+            int count = countOccurrences(content, matchText);
+
             if (count == 0) {
-                return error(
-                        toolCallId,
-                        "search_replace",
-                        ErrorCodes.TOOL_FAILED,
-                        "old_string not found in " + path);
+                FuzzyMatcher.Match normalized = FuzzyMatcher.normalized(content, oldString);
+                if (normalized != null) {
+                    matchText = normalized.text();
+                    count = countOccurrences(content, matchText);
+                }
+            }
+            if (count == 0) {
+                List<FuzzyMatcher.Match> near = FuzzyMatcher.nearMatches(content, oldString, 5);
+                if (near.size() == 1 && near.get(0).score() >= FUZZY_AUTO_APPLY) {
+                    matchText = near.get(0).text();
+                    count = 1;
+                } else if (!near.isEmpty()) {
+                    String hint = FuzzyMatcher.formatCandidates(near, content);
+                    return error(
+                            toolCallId,
+                            "search_replace",
+                            ErrorCodes.TOOL_FAILED,
+                            "old_string not found in " + path + (hint.isBlank() ? "" : "\n" + hint));
+                } else {
+                    return error(
+                            toolCallId,
+                            "search_replace",
+                            ErrorCodes.TOOL_FAILED,
+                            "old_string not found in " + path);
+                }
             }
             if (!replaceAll && count > 1) {
                 return error(
@@ -61,13 +84,14 @@ public final class EditTools {
                         ErrorCodes.TOOL_FAILED,
                         "old_string matches " + count + " times; set replace_all=true or use a unique old_string");
             }
-            String updated = replaceAll ? content.replace(oldString, newString) : content.replaceFirst(oldString, newString);
+            String updated = replaceAll ? content.replace(matchText, newString) : content.replaceFirst(matchText, newString);
             Files.writeString(abs, updated);
             int replaced = replaceAll ? count : 1;
+            String note = matchText.equals(oldString) ? "" : " (fuzzy match)";
             return ToolResult.ok(
                     toolCallId,
                     "search_replace",
-                    "replaced " + replaced + " occurrence(s) in " + path);
+                    "replaced " + replaced + " occurrence(s) in " + path + note);
         } catch (PathEscapeException e) {
             return denied(toolCallId, "search_replace", e.getMessage());
         } catch (IOException e) {
@@ -76,15 +100,19 @@ public final class EditTools {
     }
 
     /**
-     * Apply a unified diff to a single file. Patch may include multiple hunks for one path.
-     * Lines must use Unix newlines.
+     * Apply unified diff. Supports single-file (path + patch) and multi-file (patch with ---/+++ headers).
      */
     public static ToolResult applyPatch(FsTools fs, String toolCallId, String path, String patch) {
-        if (path == null || path.isBlank()) {
-            return argError(toolCallId, "apply_patch", "path is required");
-        }
         if (patch == null || patch.isBlank()) {
             return argError(toolCallId, "apply_patch", "patch is required");
+        }
+
+        if (MultiFilePatch.isMultiFile(patch)) {
+            return applyMultiFilePatch(fs, toolCallId, patch);
+        }
+
+        if (path == null || path.isBlank()) {
+            return argError(toolCallId, "apply_patch", "path is required for single-file patch");
         }
 
         try {
@@ -104,6 +132,25 @@ public final class EditTools {
         } catch (IOException e) {
             return error(toolCallId, "apply_patch", ErrorCodes.TOOL_FAILED, e.getMessage());
         }
+    }
+
+    public static ToolResult applyMultiFilePatch(FsTools fs, String toolCallId, String patch) {
+        List<MultiFilePatch.FilePatch> files = MultiFilePatch.parse(patch);
+        if (files.isEmpty()) {
+            return argError(toolCallId, "apply_patch", "no file sections found in patch");
+        }
+        String err = MultiFilePatch.applyAll(fs.workspaceRoot(), files);
+        if (err != null) {
+            return error(toolCallId, "apply_patch", ErrorCodes.TOOL_FAILED, err);
+        }
+        if (files.size() == 1) {
+            return ToolResult.ok(toolCallId, "apply_patch", "patched " + files.get(0).path());
+        }
+        StringBuilder sb = new StringBuilder("patched " + files.size() + " files:\n");
+        for (MultiFilePatch.FilePatch fp : files) {
+            sb.append("- ").append(fp.path()).append('\n');
+        }
+        return ToolResult.ok(toolCallId, "apply_patch", sb.toString().trim());
     }
 
     /** Warn in tool description — large files should not use fs.write. */
@@ -137,6 +184,10 @@ public final class EditTools {
                     i++;
                     continue;
                 }
+                if (line.startsWith("---") || line.startsWith("+++")) {
+                    i++;
+                    continue;
+                }
                 if (line.charAt(0) == ' ') {
                     String text = line.substring(1);
                     oldBlock.add(text);
@@ -152,6 +203,9 @@ public final class EditTools {
             }
             int startIdx = findBlock(lines, oldBlock, Math.max(0, hunk.oldStart - 1));
             if (startIdx < 0) {
+                startIdx = findBlockFuzzy(lines, oldBlock, Math.max(0, hunk.oldStart - 1));
+            }
+            if (startIdx < 0) {
                 return null;
             }
             lines.subList(startIdx, startIdx + oldBlock.size()).clear();
@@ -161,15 +215,18 @@ public final class EditTools {
     }
 
     private static Hunk parseHunkHeader(String header) {
-        // @@ -1,3 +1,4 @@
+        // @@ -1,3 +1,4 @@  or bare @@
         try {
+            if (header.trim().equals("@@")) {
+                return new Hunk(1);
+            }
             String body = header.substring(2, header.lastIndexOf("@@")).trim();
             String[] parts = body.split(" ");
             String oldPart = parts[0].substring(1);
             int oldStart = Integer.parseInt(oldPart.split(",")[0]);
             return new Hunk(oldStart);
         } catch (Exception e) {
-            return null;
+            return new Hunk(1);
         }
     }
 
@@ -188,6 +245,21 @@ public final class EditTools {
             }
         }
         return -1;
+    }
+
+    private static int findBlockFuzzy(List<String> lines, List<String> block, int hint) {
+        if (block.isEmpty()) {
+            return hint;
+        }
+        String blockText = String.join("\n", block);
+        String fileText = String.join("\n", lines);
+        FuzzyMatcher.Match norm = FuzzyMatcher.normalized(fileText, blockText);
+        if (norm == null) {
+            return -1;
+        }
+        String matched = norm.text();
+        List<String> matchedLines = List.of(matched.split("\n", -1));
+        return findBlock(lines, matchedLines, hint);
     }
 
     private static boolean matchesBlock(List<String> lines, int start, List<String> block) {

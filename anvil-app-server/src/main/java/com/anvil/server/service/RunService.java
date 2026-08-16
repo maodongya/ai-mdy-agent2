@@ -9,6 +9,8 @@ import com.anvil.core.loop.RunRequest;
 import com.anvil.core.model.LlmRegistry;
 import com.anvil.core.model.ModelProvider;
 import com.anvil.core.model.ModelProviderFactory;
+import com.anvil.core.model.ModelRoutingConfig;
+import com.anvil.core.model.RoutingModelProvider;
 import com.anvil.core.mcp.McpBridge;
 import com.anvil.core.tools.ToolCatalog;
 import com.anvil.protocol.Event;
@@ -178,6 +180,7 @@ public class RunService {
                 openFiles,
                 focusFile,
                 selection,
+                null,
                 null);
     }
 
@@ -186,18 +189,6 @@ public class RunService {
      *
      * <p>该方法是异步的：校验线程存在后立即创建运行记录并放入后台虚拟线程执行，
      * LoopEngine 完成后将结果写回线程记忆。审批等待 / 恢复会在事件回调中同步运行状态。
-     *
-     * @param threadId           会话线程 id
-     * @param mode               运行模式
-     * @param model              模型标识
-     * @param userMessage        用户消息
-     * @param profile            运行档案（可为 null，使用默认）
-     * @param maxStepsOverride   步数覆盖（>0 时使用该值）
-     * @param openFiles          已打开文件列表
-     * @param focusFile          聚焦文件
-     * @param selection          编辑器选区
-     * @param autoApproveWrites  是否自动批准写操作（可为 null 表示不强制）
-     * @return 已创建、状态为 RUNNING 的运行记录
      */
     public RunRecord startRun(
             String threadId,
@@ -210,6 +201,33 @@ public class RunService {
             String focusFile,
             EditorSelection selection,
             Boolean autoApproveWrites)
+            throws Exception {
+        return startRun(
+                threadId,
+                mode,
+                model,
+                userMessage,
+                profile,
+                maxStepsOverride,
+                openFiles,
+                focusFile,
+                selection,
+                autoApproveWrites,
+                null);
+    }
+
+    public RunRecord startRun(
+            String threadId,
+            Mode mode,
+            String model,
+            String userMessage,
+            RunProfile profile,
+            Integer maxStepsOverride,
+            List<String> openFiles,
+            String focusFile,
+            EditorSelection selection,
+            Boolean autoApproveWrites,
+            Map<String, String> editorBuffers)
             throws Exception {
         ThreadRecord thread =
                 store.thread(threadId).orElseThrow(() -> new IllegalArgumentException("thread not found: " + threadId));
@@ -228,7 +246,26 @@ public class RunService {
                 : Math.max(contextConfig.maxStepsDefault(), effectiveProfile.defaultMaxSteps());
 
         // 组装模型提供方、工具 schema 与历史记忆
-        ModelProvider provider = ModelProviderFactory.create(model, llmRegistry, fixturesRoot());
+        ModelRoutingConfig routing = contextConfig.modelRouting();
+        ModelProvider baseProvider = ModelProviderFactory.create(model, llmRegistry, fixturesRoot());
+        final ModelProvider provider =
+                routing.enabled() && !model.startsWith("scripted:")
+                        ? new RoutingModelProvider(
+                                model,
+                                routing,
+                                llmRegistry,
+                                fixturesRoot(),
+                                effectiveProfile,
+                                (step, routedModel) -> store.eventStore()
+                                        .append(new Event(
+                                                "1.0",
+                                                threadId,
+                                                run.runId(),
+                                                0,
+                                                "model.routed",
+                                                java.time.Instant.now().toString(),
+                                                Map.of("step", step, "model", routedModel))))
+                        : baseProvider;
         List<Map<String, Object>> toolSchemas =
                 ToolCatalog.merge(ToolCatalog.builtinSchemas(mode), mcpBridge.toolSchemas());
         List<Map<String, Object>> priorHistory = threadMemory.load(threadId);
@@ -236,6 +273,7 @@ public class RunService {
         var atRefs = RunRequest.parseAtReferences(userMessage, thread.workspaceRoot());
         String effectiveMessage = atRefs.cleanedMessage().isBlank() ? userMessage : atRefs.cleanedMessage();
 
+        Map<String, String> buffers = editorBuffers == null ? Map.of() : editorBuffers;
         RunRequest request = new RunRequest(
                 threadId,
                 run.runId(),
@@ -247,7 +285,7 @@ public class RunService {
                 approvalTimeoutMs,
                 shellTimeoutMs,
                 RunRequest.formatHarnessContext(
-                        thread.workspaceRoot(), userMessage, openFiles, focusFile, selection));
+                        thread.workspaceRoot(), userMessage, openFiles, focusFile, selection, buffers));
 
         boolean yoloWrites = autoApproveWrites != null && autoApproveWrites;
         LoopOptions loopOptions = new LoopOptions(
@@ -259,8 +297,8 @@ public class RunService {
                 effectiveProfile,
                 autoApprovePatchTools,
                 yoloWrites,
-                contextConfig.verifyConfig(),
-                contextConfig.loopConfig());
+                contextConfig.verifyFor(mode, effectiveProfile),
+                contextConfig.loopConfigForProfile(effectiveProfile));
 
         // 后台执行 LoopEngine；事件通过回调持续写回事件存储
         executor.submit(() -> {

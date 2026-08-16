@@ -56,6 +56,35 @@ public final class AnvilClient {
             String selectionText,
             boolean autoApproveWrites)
             throws Exception {
+        return startRun(
+                threadId,
+                mode,
+                model,
+                message,
+                profile,
+                openFiles,
+                focusFile,
+                selectionStartLine,
+                selectionEndLine,
+                selectionText,
+                autoApproveWrites,
+                null);
+    }
+
+    public Map<String, Object> startRun(
+            String threadId,
+            String mode,
+            String model,
+            String message,
+            String profile,
+            List<String> openFiles,
+            String focusFile,
+            Integer selectionStartLine,
+            Integer selectionEndLine,
+            String selectionText,
+            boolean autoApproveWrites,
+            Map<String, String> editorBuffers)
+            throws Exception {
         Map<String, Object> body = new java.util.LinkedHashMap<>();
         body.put("mode", mode);
         body.put("model", model);
@@ -81,9 +110,13 @@ public final class AnvilClient {
         if (autoApproveWrites) {
             body.put("autoApproveWrites", true);
         }
+        if (editorBuffers != null && !editorBuffers.isEmpty()) {
+            body.put("editorBuffers", editorBuffers);
+        }
         return postMap("/v1/threads/" + enc(threadId) + "/runs", body);
     }
 
+    /** Backward-compatible overload without autoApproveWrites flag. */
     public Map<String, Object> startRun(
             String threadId,
             String mode,
@@ -107,7 +140,8 @@ public final class AnvilClient {
                 selectionStartLine,
                 selectionEndLine,
                 selectionText,
-                false);
+                false,
+                null);
     }
 
     public Map<String, Object> startRun(String threadId, String mode, String model, String message, String profile)
@@ -133,6 +167,51 @@ public final class AnvilClient {
 
     public Map<String, Object> workspaceFile(String threadId, String path) throws Exception {
         return getMap("/v1/workspace/file?thread_id=" + encQuery(threadId) + "&path=" + encQuery(path));
+    }
+
+    public Map<String, Object> saveWorkspaceFile(String threadId, String path, String content) throws Exception {
+        return putMap(
+                "/v1/workspace/file?thread_id=" + encQuery(threadId) + "&path=" + encQuery(path),
+                Map.of("content", content));
+    }
+
+    public Map<String, Object> lspDefinition(String threadId, String path, int line, int column) throws Exception {
+        return getMap("/v1/lsp/definition?thread_id="
+                + encQuery(threadId)
+                + "&path="
+                + encQuery(path)
+                + "&line="
+                + line
+                + "&column="
+                + column);
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> lspReferences(String threadId, String path, int line, int column) throws Exception {
+        Map<String, Object> resp = getMap("/v1/lsp/references?thread_id="
+                + encQuery(threadId)
+                + "&path="
+                + encQuery(path)
+                + "&line="
+                + line
+                + "&column="
+                + column);
+        Object refs = resp.get("references");
+        if (refs instanceof List<?> list) {
+            return (List<Map<String, Object>>) list;
+        }
+        return List.of();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> compileDiagnostics(String threadId, String path) throws Exception {
+        Map<String, Object> body = path == null || path.isBlank() ? Map.of() : Map.of("path", path);
+        Map<String, Object> resp = postMap("/v1/lsp/diagnostics?thread_id=" + encQuery(threadId), body);
+        Object items = resp.get("diagnostics");
+        if (items instanceof List<?> list) {
+            return (List<Map<String, Object>>) list;
+        }
+        return List.of();
     }
 
     public Thread streamEvents(String runId, int fromSeq, Consumer<Event> onEvent, Runnable onComplete) {
@@ -240,6 +319,19 @@ public final class AnvilClient {
                 .uri(baseUrl.resolve(path))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(ProtocolJson.toJson(body)))
+                .build();
+        HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() >= 400) {
+            throw new IllegalStateException("HTTP " + response.statusCode() + ": " + response.body());
+        }
+        return ProtocolJson.mapFromJson(response.body());
+    }
+
+    private Map<String, Object> putMap(String path, Map<String, ?> body) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(baseUrl.resolve(path))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(ProtocolJson.toJson(body)))
                 .build();
         HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() >= 400) {

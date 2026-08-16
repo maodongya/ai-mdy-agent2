@@ -82,7 +82,8 @@ public class RunController {
                 body.openFiles(),
                 body.focusFile(),
                 editorSelection(body),
-                body.autoApproveWrites());
+                body.autoApproveWrites(),
+                body.editorBuffers());
         // 返回 202 接受状态，并携带运行任务的标识与初始状态
         return ResponseEntity.accepted()
                 .body(Map.of(
@@ -218,5 +219,6 @@ public class RunController {
             Integer selectionStartLine,
             Integer selectionEndLine,
             String selectionText,
-            Boolean autoApproveWrites) {}
+            Boolean autoApproveWrites,
+            java.util.Map<String, String> editorBuffers) {}
 }

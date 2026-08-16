@@ -1,6 +1,9 @@
 package com.anvil.server.config;
 
+import com.anvil.core.mcp.BuiltinMcpRegistry;
 import com.anvil.core.mcp.McpBridge;
+import com.anvil.core.mcp.McpServerCatalog;
+import com.anvil.core.mcp.McpServerConfig;
 import com.anvil.core.model.LlmRegistry;
 import com.anvil.core.model.OpenAiConfig;
 import com.anvil.protocol.SandboxTier;
@@ -65,9 +68,14 @@ public class AnvilHarnessConfig {
     @Bean(destroyMethod = "close")
     McpBridge mcpBridge(
             @Value("${anvil.mcp.rpc-timeout-ms:30000}") long rpcTimeoutMs,
-            @Value("${anvil.mcp.allowlist:}") List<String> allowlist) {
+            @Value("${anvil.mcp.allowlist:junit,github,checkstyle}") List<String> allowlist,
+            @Value("${anvil.mcp.builtin-stubs:true}") boolean builtinStubs) {
         Set<String> allowed = new HashSet<>(allowlist == null ? List.of() : allowlist);
-        return new McpBridge(List.of(), allowed, rpcTimeoutMs);
+        List<McpServerConfig> servers = McpServerCatalog.documentedDefaults();
+        if (!builtinStubs) {
+            allowed.removeIf(BuiltinMcpRegistry::isBuiltinServer);
+        }
+        return new McpBridge(servers, allowed, rpcTimeoutMs);
     }
 
     /** 解析沙箱安全级别（SandboxTier），用于控制工具可访问的资源范围。 */

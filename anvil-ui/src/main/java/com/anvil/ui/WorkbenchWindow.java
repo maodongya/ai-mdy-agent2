@@ -56,10 +56,17 @@ public final class WorkbenchWindow {
 
     private javafx.scene.control.MenuBar buildMenuBar() {
         var file = new javafx.scene.control.Menu("File");
+        var save = menu("Save", "Shortcut+S", view::saveCurrentFile);
         var newWindow = menu("New Window", "Shortcut+N", () -> openNew());
         var prefs = menu("Preferences…", "Shortcut+Comma", view::showPreferences);
         var close = menu("Close Window", "Shortcut+W", stage::close);
-        file.getItems().addAll(newWindow, prefs, new javafx.scene.control.SeparatorMenuItem(), close);
+        file.getItems().addAll(save, newWindow, prefs, new javafx.scene.control.SeparatorMenuItem(), close);
+
+        var edit = new javafx.scene.control.Menu("Edit");
+        edit.getItems()
+                .addAll(
+                        menu("Go to Definition", "F12", view::goToDefinition),
+                        menu("Find References", "Shift+F12", view::findReferences));
 
         var agent = new javafx.scene.control.Menu("Agent");
         agent.getItems()
@@ -78,7 +85,7 @@ public final class WorkbenchWindow {
                         menu("Toggle Terminal", "Ctrl+BACK_QUOTE", view::toggleTerminal),
                         menu("Focus Terminal", "Ctrl+Shift+5", view::focusTerminalInput));
 
-        var bar = new javafx.scene.control.MenuBar(file, agent, viewMenu, buildThemeMenu());
+        var bar = new javafx.scene.control.MenuBar(file, edit, agent, viewMenu, buildThemeMenu());
         bar.getStyleClass().add("menu-bar");
         return bar;
     }
