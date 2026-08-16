@@ -6,6 +6,19 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.Collections;
 import java.util.Map;
 
+/**
+ * 运行过程中的事件记录：Agent 会话产生的一切可观测事件
+ * （消息增量、工具调用、审批请求、运行终态等）统一以该结构表示，
+ * 通过 SSE 流式推送给前端。
+ *
+ * @param protocolVersion 协议版本（默认取 {@link ProtocolConstants#PROTOCOL_VERSION}）
+ * @param threadId        所属线程标识
+ * @param runId           所属运行实例标识
+ * @param seq             事件序号（单调递增，用于增量消费）
+ * @param type            事件类型（如 message.delta / tool.completed / approval.required …）
+ * @param ts              事件时间戳
+ * @param payload         事件负载（随类型不同而各异）
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record Event(
         @JsonProperty("protocol_version") String protocolVersion,
